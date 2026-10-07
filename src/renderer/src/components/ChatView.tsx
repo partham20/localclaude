@@ -25,7 +25,7 @@ import { TaskBar, type Todo } from './TaskBar'
 
 type Segment = { kind: 'user'; message: ChatMessage } | { kind: 'turn'; key: string; messages: ChatMessage[] }
 
-const MODES: { value: PermissionModeUI; label: string; short: string; hint: string }[] = [
+export const MODES: { value: PermissionModeUI; label: string; short: string; hint: string }[] = [
   { value: 'default', label: 'Ask permissions', short: 'Ask', hint: 'Claude asks before editing files or running commands' },
   { value: 'acceptEdits', label: 'Auto-accept edits', short: 'Edits', hint: 'File edits go through; commands still ask' },
   { value: 'plan', label: 'Plan mode', short: 'Plan', hint: 'Claude researches and proposes a plan without changing anything' },
@@ -35,13 +35,13 @@ const MODES: { value: PermissionModeUI; label: string; short: string; hint: stri
 /** Shift+Tab cycles these, like Claude Code. Full access is only reachable from the menu. */
 const CYCLE: PermissionModeUI[] = ['default', 'acceptEdits', 'plan', 'auto']
 
-const MODEL_ALIASES = [
+export const MODEL_ALIASES = [
   { value: '', displayName: 'Default', description: "Claude Code's default for your plan" },
   { value: 'opus', displayName: 'Opus', description: 'Most capable' },
   { value: 'sonnet', displayName: 'Sonnet', description: 'Fast and capable' },
   { value: 'haiku', displayName: 'Haiku', description: 'Fastest' }
 ]
-const EFFORTS: { value: AppSettings['effort']; label: string }[] = [
+export const EFFORTS: { value: AppSettings['effort']; label: string }[] = [
   { value: '', label: 'Default' },
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
@@ -53,7 +53,7 @@ const EFFORTS: { value: AppSettings['effort']; label: string }[] = [
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** claude-opus-5-5 → Opus 5.5 */
-function prettyModel(id: string | undefined): string {
+export function prettyModel(id: string | undefined): string {
   if (!id) return 'Default'
   const m = /claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-|$|\[)/i.exec(id)
   if (m) return `${cap(m[1])} ${m[2]}${m[3] ? '.' + m[3] : ''}`

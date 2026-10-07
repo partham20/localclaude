@@ -2,10 +2,10 @@
 // describing it, and find every design you've made. Each design is a chat with its own canvas.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { DESIGN_KINDS, designKind } from '../../../shared/design'
-import type { Attachment, DesignInfo, DesignKind, ProjectArtifactRef, SessionMeta } from '../../../shared/types'
+import type { AppSettings, Attachment, DesignInfo, DesignKind, PermissionModeUI, ProjectArtifactRef, SessionMeta } from '../../../shared/types'
 import { api } from '../api'
 import { FRAMED } from './ArtifactPanel'
-import { fileToAttachment } from './ChatView'
+import { EFFORTS, MODEL_ALIASES, MODES, fileToAttachment, prettyModel } from './ChatView'
 import { Icon } from './Icon'
 import { Menu } from './Menu'
 import { TitleBar, ago } from './Projects'
@@ -50,6 +50,9 @@ export interface NewDesign {
   design: DesignInfo
   /** the folder whose style to match */
   cwd?: string
+  /** the design chat's model ('' = Claude Code's default) and permission mode */
+  model: string
+  permissionMode: PermissionModeUI
 }
 
 export function DesignsView(props: {
@@ -59,6 +62,8 @@ export function DesignsView(props: {
   onCreate: (d: NewDesign) => Promise<unknown>
   onPin: (id: string, pinned: boolean) => void
   onDelete: (id: string) => void
+  settings: AppSettings
+  onSettings: (patch: Partial<AppSettings>) => void
 }) {
   const [kind, setKind] = useState<DesignKind>('prototype')
   const [text, setText] = useState('')
@@ -68,6 +73,15 @@ export function DesignsView(props: {
   const [filter, setFilter] = useState('')
   const [refs, setRefs] = useState<ProjectArtifactRef[]>([])
   const [dragOver, setDragOver] = useState(false)
+  // the new design's chat starts with these; they can be changed there later
+  const [model, setModel] = useState(props.settings.defaultModel)
+  const [mode, setMode] = useState<PermissionModeUI>(props.settings.defaultPermissionMode)
+  const [models, setModels] = useState(MODEL_ALIASES)
+  useEffect(() => {
+    void api.listModels().then((m) => {
+      if (m.length) setModels([MODEL_ALIASES[0], ...m.filter((x) => x.value && x.value !== 'default')])
+    })
+  }, [])
   const ta = useRef<HTMLTextAreaElement>(null)
   const info = designKind(kind)
 
@@ -102,8 +116,12 @@ export function DesignsView(props: {
     if (!t || creating) return
     setCreating(true)
     // on success the new design opens in place of this page
-    props.onCreate({ text: t, attachments, design: { kind, matchStyle: !!folder }, cwd: folder || undefined }).catch(() => setCreating(false))
+    props.onCreate({ text: t, attachments, design: { kind, matchStyle: !!folder }, cwd: folder || undefined, model, permissionMode: mode }).catch(() => setCreating(false))
   }
+
+  const modelLabel = models.find((m) => m.value === model)?.displayName ?? prettyModel(model)
+  const effortLabel = EFFORTS.find((e) => e.value === props.settings.effort && e.value)?.label
+  const modeInfo = MODES.find((m) => m.value === mode) ?? MODES[0]
 
   return (
     <div className="page">
@@ -206,6 +224,41 @@ export function DesignsView(props: {
                 </button>
               )}
               <span className="grow" />
+              <Menu
+                className="below-menu design-model"
+                align="right"
+                title="Model and effort"
+                trigger={
+                  <>
+                    <span className="model-name">{modelLabel}</span>
+                    {effortLabel && <span className="muted">{effortLabel}</span>}
+                  </>
+                }
+                entries={[
+                  { section: 'Model' },
+                  ...models.map((m) => ({ key: 'm:' + m.value, label: m.displayName, hint: m.description, checked: model === m.value, onSelect: () => setModel(m.value) })),
+                  'divider',
+                  { section: 'Effort' },
+                  ...EFFORTS.map((e) => ({ key: 'e:' + e.value, label: e.label, checked: props.settings.effort === e.value, onSelect: () => props.onSettings({ effort: e.value }) }))
+                ]}
+              />
+              <Menu
+                className={'below-menu design-mode mode-' + mode}
+                align="right"
+                title={modeInfo.hint}
+                trigger={<span>{modeInfo.short}</span>}
+                entries={MODES.map((m) => ({
+                  key: m.value,
+                  label: m.label,
+                  hint: m.hint,
+                  checked: mode === m.value,
+                  danger: m.value === 'bypassPermissions',
+                  onSelect: () => {
+                    if (m.value === 'bypassPermissions' && !confirm('Full access lets Claude edit, delete and run anything on this machine without asking. Continue?')) return
+                    setMode(m.value)
+                  }
+                }))}
+              />
               <button className="btn primary" disabled={!text.trim() || creating} onClick={create}>
                 Create {info.label.toLowerCase()}
               </button>

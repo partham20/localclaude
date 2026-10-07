@@ -613,9 +613,16 @@ export default function App() {
             headerLeft={headerLeft}
             sessions={sessions}
             onOpen={openChat}
-            onCreate={(d) => newChat(d.cwd, undefined, d.design).then((meta) => api.send({ sessionId: meta.id, text: d.text, attachments: d.attachments }))}
+            onCreate={async (d) => {
+              const meta = await newChat(d.cwd, undefined, d.design)
+              if (d.model !== meta.model) await api.setModel(meta.id, d.model)
+              if (d.permissionMode !== meta.permissionMode) await api.setMode(meta.id, d.permissionMode)
+              await api.send({ sessionId: meta.id, text: d.text, attachments: d.attachments })
+            }}
             onPin={(id, p) => void pinChat(id, p)}
             onDelete={(id) => void deleteChat(id)}
+            settings={settings}
+            onSettings={updateSettings}
           />
         ) : page.kind === 'projects' ? (
           <ProjectsView
