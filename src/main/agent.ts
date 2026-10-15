@@ -30,7 +30,7 @@ import { resolveClaudeBinary, subscriptionEnv } from './claude'
 import { ARTIFACT_TOOLS, createArtifactServer } from './artifacts'
 import { CHAT_TOOLS, ChatIndex, createChatsServer } from './chatSearch'
 import { createComputerServer } from './computer'
-import { designPrompt } from './design'
+import { SCREEN_AGENT, designPrompt } from './design'
 import { referencedImages, resultImages, storeImage } from './images'
 import { KNOWLEDGE_TOOLS, NOTE_TOOL, createKnowledgeServer, type KnowledgeIndex, type KnowledgeService } from './knowledge'
 import { activeVault } from './obsidian'
@@ -254,7 +254,11 @@ class AgentSession {
       includePartialMessages: true,
       forwardSubagentText: true,
       canUseTool: (toolName, input, opts) => this.canUseTool(toolName, input, opts),
-      env: subscriptionEnv(),
+      // A design's frames are written by subagents at the same time. They run in the foreground,
+      // so the turn lasts until every frame is done (Claude Code would otherwise end the turn and
+      // let them finish in the background).
+      env: design ? { ...subscriptionEnv(), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '8' } : subscriptionEnv(),
+      agents: design ? { 'design-screen': SCREEN_AGENT } : undefined,
       pathToClaudeCodeExecutable: resolveClaudeBinary(),
       settingSources: sources,
       systemPrompt: {

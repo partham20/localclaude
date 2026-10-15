@@ -122,7 +122,57 @@ export function fakeQuery({ prompt, options = {} }: { prompt: string | AsyncIter
       out.push({ type: 'user', uuid: randomUUID(), parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: r.text, is_error: r.isError }] } })
     }
     let reply = `Echo: ${text}` + (images ? ` (with ${images} image${images === 1 ? '' : 's'})` : '')
-    if (t.startsWith('comment on the design')) {
+    if (t.includes('design a travel app')) {
+      // several frames: a design system written live, then two subagents writing their screens at the same time
+      const design = {
+        id: 'design-system',
+        type: 'html',
+        title: 'Design system',
+        section: 'Design system',
+        width: 1200,
+        height: 900,
+        content:
+          '<!doctype html><html><head><meta charset="utf-8"><style>:root{--sun:#e8a35b;--ink:#2b2118;--paper:#fbf4ea}body{margin:0;padding:48px;font-family:Georgia,serif;background:var(--paper);color:var(--ink)}.swatch{display:inline-block;width:120px;height:120px;border-radius:16px;margin-right:16px}</style></head>' +
+          '<body><h1 id="ds-title">Golden hour</h1><div class="swatch" style="background:var(--sun)"></div><div class="swatch" style="background:var(--ink)"></div><h2>Type scale</h2><p>Fraunces for headings, Plus Jakarta Sans for text.</p></body></html>'
+      }
+      await streamTool('mcp__artifacts__create_artifact', design, () => tool('artifacts', 'create_artifact', design))
+      const screens = [
+        { id: 'home', title: 'Home', line: 'Coorg monsoon ride · 3 days to go' },
+        { id: 'trip', title: 'Trip details', line: 'Mysuru → Kushalnagar → Madikeri' }
+      ]
+      const agents = screens.map(() => 'toolu_' + randomUUID().slice(0, 8))
+      out.push({
+        type: 'assistant',
+        uuid: randomUUID(),
+        parent_tool_use_id: null,
+        message: { id: 'msg_' + randomUUID().slice(0, 8), content: screens.map((s, i) => ({ type: 'tool_use', id: agents[i], name: 'Agent', input: { description: s.title, subagent_type: 'design-screen', prompt: `Make the ${s.title} frame: ${s.line}` } })) }
+      })
+      await Promise.all(
+        screens.map(async (s, i) => {
+          const parent = agents[i]
+          const sub = async (name: string, input: Record<string, unknown>): Promise<void> => {
+            const id = 'toolu_' + randomUUID().slice(0, 8)
+            out.push({ type: 'assistant', uuid: randomUUID(), parent_tool_use_id: parent, message: { id: 'msg_' + randomUUID().slice(0, 8), content: [{ type: 'tool_use', id, name, input }] } })
+            const r = await tool('artifacts', name.replace('mcp__artifacts__', ''), input)
+            out.push({ type: 'user', uuid: randomUUID(), parent_tool_use_id: parent, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: r.text, is_error: r.isError }] } })
+          }
+          await sub('mcp__artifacts__read_artifact', { id: 'design-system' })
+          // long enough to see the placeholders on the board
+          await sleep(1500 + i * 300)
+          await sub('mcp__artifacts__create_artifact', {
+            id: s.id,
+            type: 'html',
+            title: s.title,
+            section: 'Mockups',
+            width: 390,
+            height: 844,
+            content: `<!doctype html><html><head><meta charset="utf-8"><style>:root{--sun:#e8a35b;--ink:#2b2118}body{margin:0;padding:32px 24px;font-family:Georgia,serif;color:var(--ink);background:#fff}</style></head><body><h1 id="${s.id}-title">${s.title}</h1><p>${s.line}</p></body></html>`
+          })
+          out.push({ type: 'user', uuid: randomUUID(), parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: parent, content: `Made the ${s.title} frame.` }] } })
+        })
+      )
+      reply = 'I made a design system and two screens.'
+    } else if (t.startsWith('comment on the frame')) {
       // a comment from the design canvas names the element; this design has one headline to change
       const input = { id: 'bakery-landing', old_str: 'Fresh bread daily', new_str: 'Warm bread, every morning' }
       await callTool('mcp__artifacts__update_artifact', input, () => tool('artifacts', 'update_artifact', input))

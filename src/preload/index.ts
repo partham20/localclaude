@@ -131,9 +131,12 @@ const api = {
   projectArtifacts: (id: string) => inv<ProjectArtifactRef[]>('projects:artifacts', id),
   allArtifacts: () => inv<ProjectArtifactRef[]>('artifacts:all'),
   openArtifactInBrowser: (sessionId: string, artifactId: string, version?: number) => inv<boolean>('artifacts:openInBrowser', sessionId, artifactId, version),
-  /** a design as PDF (one page per slide for decks) or a PNG of the whole page at this width (and at least this height) */
-  exportDesign: (sessionId: string, artifactId: string, version: number, format: 'pdf' | 'png', width: number, height?: number) =>
-    inv<DesignExportResult>('design:export', sessionId, artifactId, version, format, width, height),
+  /** one frame as PDF or PNG: exactly width × height when `exact` (a fixed-size frame), else the whole page */
+  exportDesign: (sessionId: string, artifactId: string, version: number, format: 'pdf' | 'png', width: number, height?: number, exact?: boolean) =>
+    inv<DesignExportResult>('design:export', sessionId, artifactId, version, format, width, height, exact),
+  /** every frame as one PDF, a page per frame */
+  exportDesignAll: (sessionId: string, items: { artifactId: string; version: number; width: number; height: number }[]) =>
+    inv<DesignExportResult>('design:exportAll', sessionId, items),
   /** a new chat in this folder that can read the design, to build it in code */
   designHandoff: (sessionId: string, artifactId: string, version: number, folder: string) =>
     inv<{ meta: SessionMeta; path: string }>('design:handoff', sessionId, artifactId, version, folder),

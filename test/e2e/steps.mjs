@@ -3,6 +3,12 @@ import { join } from 'node:path'
 import { makeDocx, makePdf, mcpServerScript } from './files.mjs'
 
 const lastTurnId = "(__t.qa('.turn').at(-1)?.dataset.turn ?? '')"
+/** Click a frame on the design board (a press and release without moving, which picks it). */
+const selectFrame = (sel) => `(() => {
+  const f = __t.q(${JSON.stringify(sel)}); const r = f.getBoundingClientRect(); const at = { clientX: r.left + 4, clientY: r.top + 4 }
+  f.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, ...at })); window.dispatchEvent(new MouseEvent('mouseup', at)); return true
+})()`
+const homeLabel = "__t.qa('.board-label').find((l) => l.textContent.includes('Home'))"
 
 export const steps = [
   {
@@ -746,7 +752,7 @@ export const steps = [
       await c.shot('design-writing')
       if (!(await c.page("__t.qa('.artifact-chip').some((e) => e.innerText.includes('Bakery landing page') && e.innerText.includes('Writing'))"))) throw new Error('the card in the chat should say it is being written')
       await c.waitFor('Claude replied', "__t.qa('.turn').some((t) => t.innerText.includes('I designed a landing page')) && !__t.q('.send.stop')", 15000)
-      await c.waitFor('the finished design on the canvas', "!__t.q('.design-draft') && !__t.q('.design-writing') && __t.q('.design-frame iframe')?.style.width === '1440px'")
+      await c.waitFor('the finished design on the board', "!__t.q('.design-draft') && !__t.q('.design-writing') && __t.qa('.board-frame').length === 1 && __t.q('.board-frame iframe')?.style.width === '1440px' && __t.text('.board-label').includes('Bakery landing page')")
       await c.waitForFrame('the page, its script run', "document.getElementById('hero')?.textContent === 'Fresh bread daily' && document.querySelectorAll('.loaf').length === 6 && document.body.dataset.ready === 'yes'")
       if (!(await c.page("__t.q('.side-nav.active')?.innerText.includes('Design')"))) throw new Error('the sidebar should show Design as open')
       if (await c.page("__t.qa('.session-item').some((e) => e.innerText.toLowerCase().includes('bakery'))")) throw new Error('designs belong on the Design page, not in the chat list')
@@ -754,13 +760,16 @@ export const steps = [
     }
   },
   {
-    name: 'Design: mobile size, and a comment on one element becomes a new version',
+    name: 'Design: open the frame, mobile size, and a comment on one element becomes a new version',
     run: async (c) => {
+      await c.page(`__t.click(__t.q('.board-label button[title="Open"]'))`)
+      await c.waitFor('the frame open', "!!__t.q('.design-back') && __t.text('.design-toolbar .design-name') === 'Bakery landing page' && !!__t.q('.design-frame iframe')")
       await c.page(`__t.click(__t.q('.design-viewports button[title^="Mobile"]'))`)
       await c.waitFor('a phone-sized frame', "!!__t.q('.design-frame.device') && __t.q('.design-frame iframe').style.width === '390px'")
       await c.page("__t.click(__t.q('.design-comment-btn'))")
       await c.waitFor('comment mode', "!!__t.q('.design-comment-btn.on') && !!__t.q('.design-hint')")
       // clicking the headline inside the design picks it instead of reaching the page
+      await c.waitForFrame('comment mode in the page', "document.documentElement.style.cursor === 'crosshair'")
       await c.frame("document.getElementById('hero').click(); true")
       await c.waitFor('the comment box', "!!__t.q('.design-comment') && __t.text('.design-comment-target').includes('Fresh bread daily')")
       await c.page("__t.setValue(__t.q('.design-comment textarea'), 'Make the headline warmer')")
@@ -803,9 +812,31 @@ export const steps = [
     run: async (c) => {
       await c.page("__t.click(__t.byText('.titlebar .crumb', 'Design'))")
       await c.waitFor('listed with a preview', "__t.qa('.design-card').length === 1 && !!__t.q('.design-card .design-thumb iframe')")
+      // the card's ⋯ menu shows in full: the card doesn't cut it off
+      await c.page("__t.click(__t.q('.design-card .card-menu .menu-trigger'))")
+      await c.waitFor(
+        'the whole card menu on screen',
+        // no box around it cuts it off (a scroll wouldn't show it: you can't scroll inside a card)
+        `(() => {
+          const last = __t.qa('.design-card .menu-item').at(-1)
+          if (!last || !last.textContent.includes('Delete')) return false
+          const r = last.getBoundingClientRect()
+          for (let el = last.parentElement; el && !el.classList.contains('page-scroll'); el = el.parentElement) {
+            const cs = getComputedStyle(el)
+            if (el.classList.contains('menu-pop') || (cs.overflowX === 'visible' && cs.overflowY === 'visible')) continue
+            const b = el.getBoundingClientRect()
+            if (r.bottom > b.bottom + 0.5 || r.top < b.top - 0.5 || r.right > b.right + 0.5 || r.left < b.left - 0.5) return false
+          }
+          return true
+        })()`
+      )
+      await c.page("__t.key(window, 'Escape')")
+      await c.waitFor('menu closed', "!__t.q('.design-card .menu-item')")
       await c.shot('design-page')
       await c.page("__t.click(__t.q('.design-card'))")
-      await c.waitFor('open again', "!!__t.q('.design-canvas .design-frame iframe')")
+      await c.waitFor('open again, on the board', "!!__t.q('.design-board .board-frame iframe')")
+      await c.page(selectFrame('.board-frame'))
+      await c.waitFor('the frame selected', "!!__t.q('.board-frame.selected') && __t.text('.design-toolbar .design-name') === 'Bakery landing page'")
       const proj = c.file('bakery-site')
       c.mkdir(proj)
       c.answers.push(proj)
@@ -817,6 +848,131 @@ export const steps = [
         15000
       )
       await c.waitFor('in the chat list', "__t.qa('.session-item').some((e) => e.classList.contains('active') && e.innerText.includes('Build this design'))")
+    }
+  },
+  {
+    name: 'Design: several frames written at once, a board to pan and zoom, open and present them, a PDF of all',
+    run: async (c) => {
+      await c.page("__t.click(__t.byText('.side-nav', 'Design'))")
+      await c.waitFor('the Design page', "!!__t.q('.design-start')")
+      await c.page("__t.setValue(__t.q('.design-prompt'), 'Design a travel app with a home screen and trip details')")
+      await c.page("__t.click(__t.byText('.design-start .btn.primary', 'Create'))")
+      // the design system builds up live, then both screens are written at the same time
+      await c.waitFor('the design system being written', "!!__t.q('.board-frame .design-draft') && __t.qa('.board-section').some((s) => s.textContent === 'Design system')")
+      await c.waitFor('both screens being designed at once', "__t.qa('.board-frame.pending').length === 2 && __t.text('.design-writing').includes('Designing 2 frames at once')", 10000)
+      await c.shot('design-parallel')
+      await c.waitFor('Claude replied', "__t.qa('.turn').some((t) => t.innerText.includes('two screens')) && !__t.q('.send.stop')", 15000)
+      await c.waitFor('three frames in two sections', "__t.qa('.board-frame').length === 3 && !__t.q('.board-frame.pending') && __t.qa('.board-section').map((s) => s.textContent).join('|') === 'Design system|Mockups'")
+      await c.waitFor('phone-sized screens', `__t.q('.board-frame[data-frame="home"] iframe')?.style.width === '390px' && __t.q('.board-frame[data-frame="trip"]').style.height === '844px'`)
+      await c.waitForFrame('the home screen', "document.getElementById('home-title')?.textContent === 'Home'", 10000, '/home/')
+      await c.shot('design-board')
+      // Ctrl+scroll zooms; "Zoom to fit" brings it back
+      const zoom = "__t.text('.design-zoom .menu-trigger')"
+      const fitted = await c.page(zoom)
+      await c.page("__t.q('.design-board').dispatchEvent(new WheelEvent('wheel', { deltaY: -200, ctrlKey: true, clientX: 700, clientY: 400, bubbles: true, cancelable: true })); true")
+      await c.waitFor('zoomed in', `${zoom} !== ${JSON.stringify(fitted)}`)
+      await c.page("__t.click(__t.q('.design-zoom .menu-trigger'))")
+      await c.menuItem('Zoom to fit')
+      await c.waitFor('fitted again', `${zoom} === ${JSON.stringify(fitted)}`)
+      // open a frame at its own size, step to the next, back to the board
+      await c.page(`__t.click(${homeLabel}.querySelector('button[title="Open"]'))`)
+      await c.waitFor('Home open', "__t.text('.design-toolbar .design-name') === 'Home' && __t.text('.design-count').replace(/\\s/g, '') === '2/3' && !!__t.q('.design-frame.device')")
+      await c.page("__t.key(window, 'ArrowRight')")
+      await c.waitFor('the next frame', "__t.text('.design-toolbar .design-name') === 'Trip details'")
+      await c.page("__t.key(window, 'Escape')")
+      await c.waitFor('back to the board', "!!__t.q('.design-board') && !__t.q('.design-back')")
+      await c.page("__t.click(__t.q('.design-present'))")
+      await c.waitFor('presenting', "!!__t.q('.design-canvas.presenting') && !!__t.q('.design-frame')")
+      await c.page("__t.key(window, 'Escape')")
+      await c.waitFor('stopped presenting', "!__t.q('.design-canvas.presenting') && !!__t.q('.design-board')")
+      // every frame as one PDF, a page per frame
+      const pdf = c.file('travel.pdf')
+      c.answers.push(pdf)
+      await c.page("__t.click(__t.q('.design-export .menu-trigger'))")
+      await c.menuItem('All frames as PDF')
+      await c.until('the PDF', () => c.exists(pdf) && c.read(pdf).subarray(0, 5).toString() === '%PDF-', 30000)
+      const pages = (c.read(pdf).toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length
+      if (pages !== 3) throw new Error(`the PDF should have 3 pages, not ${pages}`)
+      // a frame's PNG is exactly its size, at twice the pixels
+      const png = c.file('home.png')
+      c.answers.push(png)
+      await c.page(`__t.click(${homeLabel}.querySelector('button[title="Download as PNG"]'))`)
+      await c.until('the PNG', () => c.exists(png) && c.read(png).subarray(1, 4).toString() === 'PNG', 30000)
+      const [w, h] = [c.read(png).readUInt32BE(16), c.read(png).readUInt32BE(20)]
+      if (w !== 780 || h !== 1688) throw new Error(`the Home PNG should be 780×1688, not ${w}×${h}`)
+    }
+  },
+  {
+    name: 'Design board: drag a box to select frames, Ctrl+A, Space to pan, export only the selection',
+    run: async (c) => {
+      const rect = (key) => `(() => { const r = __t.q('.board-frame[data-frame="${key}"]').getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom } })()`
+      const home = await c.page(rect('home'))
+      const trip = await c.page(rect('trip'))
+      const drag = (from, to, down = {}) =>
+        c.page(`(() => {
+          const a = ${JSON.stringify(from)}, b = ${JSON.stringify(to)}
+          const el = document.elementFromPoint(a.x, a.y)
+          el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: a.x, clientY: a.y, ...${JSON.stringify(down)} }))
+          window.dispatchEvent(new MouseEvent('mousemove', { clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }))
+          window.dispatchEvent(new MouseEvent('mousemove', { clientX: b.x, clientY: b.y }))
+          window.dispatchEvent(new MouseEvent('mouseup', { clientX: b.x, clientY: b.y }))
+          return true
+        })()`)
+      const selected = "__t.qa('.board-frame.selected').length"
+      // a box over both screens (not the design system above them) selects exactly those two
+      await drag({ x: Math.min(home.l, trip.l) - 12, y: Math.min(home.t, trip.t) - 6 }, { x: Math.max(home.r, trip.r) + 12, y: Math.max(home.b, trip.b) + 12 })
+      await c.waitFor('two frames selected', `${selected} === 2 && __t.text('.design-toolbar .design-name') === '2 frames selected' && !__t.q('.board-marquee')`)
+      await c.shot('design-select')
+      // Ctrl+C puts the two frames on the clipboard in the format a claude.ai Design canvas pastes
+      const clip = await c.page(`(() => {
+        const dt = new DataTransfer()
+        const ev = new ClipboardEvent('copy', { clipboardData: dt, bubbles: true, cancelable: true })
+        window.dispatchEvent(ev)
+        return { html: dt.getData('text/html'), text: dt.getData('text/plain'), prevented: ev.defaultPrevented }
+      })()`)
+      const m = /^<span data-appifact-object="([A-Za-z0-9+/=]+)">([^<]*)<\/span>$/.exec(clip.html)
+      if (!clip.prevented || !m) throw new Error('the copy should put a data-appifact-object span on the clipboard: ' + clip.html.slice(0, 120))
+      const obj = JSON.parse(Buffer.from(m[1], 'base64').toString('utf8'))
+      const boards = obj.data.artboards
+      if (obj.appifact !== 1 || obj.kind !== 'design-artboards' || obj.data.v !== 1 || !obj.data.stamp || boards.length !== 2) throw new Error('wrong clipboard object: ' + JSON.stringify(obj).slice(0, 200))
+      const b = boards.find((x) => x.title === 'Home')
+      if (!b || b.w !== 390 || b.h !== 844 || b.stem !== 'home' || b.dx !== 0 || b.dy !== 0) throw new Error('the Home frame should be 390×844 at 0,0: ' + JSON.stringify({ ...b, src: '' }))
+      const t = boards.find((x) => x.title === 'Trip details')
+      if (!t || t.dx <= 390) throw new Error('Trip details should sit to the right of Home: dx=' + t?.dx)
+      for (const need of ['<script src="./support.js"></script>', '<x-dc>', '<helmet>', 'data-dc-script', '"$preview":{"width":390,"height":844}', 'id="home-title"', 'width: 390px; height: 844px'])
+        if (!b.src.includes(need)) throw new Error(`the artboard source is missing ${need}:\n${b.src}`)
+      if (clip.text !== 'Home, Trip details' && clip.text !== 'Trip details, Home') throw new Error('plain-text copy should list the frames: ' + clip.text)
+      await c.waitFor('copied notice', "__t.text('.design-notice').startsWith('Copied 2 frames. In claude.ai Design')")
+      // export just those two: a 2-page PDF
+      const pdf = c.file('selected.pdf')
+      c.answers.push(pdf)
+      await c.page("__t.click(__t.q('.design-export .menu-trigger'))")
+      await c.menuItem('2 selected frames as PDF')
+      await c.until('the PDF', () => c.exists(pdf) && c.read(pdf).subarray(0, 5).toString() === '%PDF-', 30000)
+      const pages = (c.read(pdf).toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? []).length
+      if (pages !== 2) throw new Error(`the PDF should have 2 pages, not ${pages}`)
+      // Ctrl+A selects all, Esc clears
+      await c.page("__t.key(window, 'a', { ctrlKey: true })")
+      await c.waitFor('all selected', `${selected} === 3 && __t.text('.design-toolbar .design-name') === '3 frames selected'`)
+      await c.page("__t.key(window, 'Escape')")
+      await c.waitFor('none selected', `${selected} === 0`)
+      // a click on one frame selects it, a click on the empty board clears it
+      await c.page(selectFrame('.board-frame[data-frame="home"]'))
+      await c.waitFor('Home selected', `${selected} === 1 && __t.text('.design-toolbar .design-name') === 'Home'`)
+      // holding Space, dragging moves the board and selects nothing
+      const before = await c.page(rect('home'))
+      await c.page("__t.key(window, ' ')")
+      await c.waitFor('hand cursor', "!!__t.q('.design-board.hand')")
+      await drag({ x: home.l - 12, y: home.t - 6 }, { x: home.l + 48, y: home.t + 34 })
+      await c.page("window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true })); true")
+      const after = await c.page(rect('home'))
+      if (Math.round(after.l - before.l) !== 60 || Math.round(after.t - before.t) !== 40) throw new Error(`the board should move by 60×40, moved ${after.l - before.l}×${after.t - before.t}`)
+      await c.waitFor('Space let go', "!__t.q('.design-board.hand')")
+      // the hand tool does the same without a key
+      await c.page("__t.click(__t.q('.design-tools button[title^=\"Hand\"]'))")
+      await c.waitFor('hand tool on', "!!__t.q('.design-board.hand')")
+      await c.page("__t.click(__t.q('.design-tools button[title^=\"Select\"]'))")
+      await c.waitFor('select tool back', "!__t.q('.design-board.hand')")
     }
   }
 ]

@@ -31,7 +31,7 @@ import {
 import { SessionManager } from './agent'
 import { renderArtifactPage } from './artifacts'
 import { DRAFT_PAGE, withDesignBridge } from './design'
-import { exportDesign } from './designExport'
+import { exportDesign, exportFramesPdf } from './designExport'
 import { BACKUP_EXT, MIN_PASSWORD, backupDue, backupFileName, createBackup, decryptBackup, isEncryptedBackup, writeBackupTo } from './backup'
 import { authStatus, cancelLogin, logout, resolveClaudeBinary, sendLoginInput, startLogin, subscriptionEnv } from './claude'
 import { stopComputerHelper } from './computer'
@@ -280,7 +280,7 @@ function registerIpc(): void {
   })
 
   // ---- design
-  handle('design:export', async (sessionId: string, artifactId: string, version: number, format: 'pdf' | 'png', width: number, height?: number): Promise<DesignExportResult> => {
+  handle('design:export', async (sessionId: string, artifactId: string, version: number, format: 'pdf' | 'png', width: number, height?: number, exact?: boolean): Promise<DesignExportResult> => {
     const a = store.loadArtifacts(sessionId).find((x) => x.id === artifactId)
     const v = a?.versions[version]
     if (!a || !v) return { ok: false, error: 'Design not found.' }
@@ -292,7 +292,30 @@ function registerIpc(): void {
     if (r.canceled || !r.filePath) return { ok: false, canceled: true }
     try {
       const slides = store.getSession(sessionId)?.design?.kind === 'slides'
-      writeFileSync(r.filePath, await exportDesign(renderArtifactPage(a.type, v.content), { format, width: Math.round(width) || 1440, height: Math.round(height ?? 0), slides }))
+      writeFileSync(r.filePath, await exportDesign(renderArtifactPage(a.type, v.content), { format, width: Math.round(width) || 1440, height: Math.round(height ?? 0), slides, exact }))
+      return { ok: true, path: r.filePath }
+    } catch (e) {
+      log('warn', 'design export failed:', e)
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  })
+  // Every frame of a design (a deck's slides, a set of screens) as one PDF, a page per frame.
+  handle('design:exportAll', async (sessionId: string, items: { artifactId: string; version: number; width: number; height: number }[]): Promise<DesignExportResult> => {
+    const all = store.loadArtifacts(sessionId)
+    const pages = items.flatMap((it) => {
+      const a = all.find((x) => x.id === it.artifactId)
+      const v = a?.versions[it.version]
+      return a && v ? [{ html: renderArtifactPage(a.type, v.content), width: Math.round(it.width), height: Math.round(it.height) }] : []
+    })
+    if (!pages.length) return { ok: false, error: 'There are no frames to export yet.' }
+    const r = await dialog.showSaveDialog(win!, {
+      title: 'Export all frames as PDF',
+      defaultPath: join(app.getPath('downloads'), `${safeFileName(store.getSession(sessionId)?.title ?? 'Design')}.pdf`),
+      filters: [{ name: 'PDF', extensions: ['pdf'] }]
+    })
+    if (r.canceled || !r.filePath) return { ok: false, canceled: true }
+    try {
+      writeFileSync(r.filePath, await exportFramesPdf(pages))
       return { ok: true, path: r.filePath }
     } catch (e) {
       log('warn', 'design export failed:', e)

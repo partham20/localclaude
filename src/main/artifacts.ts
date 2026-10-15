@@ -3,10 +3,25 @@
 // in the Claude app. Every version is kept, encrypted with the chat.
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { Artifact, ArtifactType } from '../shared/types'
+import type { Artifact, ArtifactFrame, ArtifactType } from '../shared/types'
 import type { SecureStore } from './store'
 
-export const ARTIFACT_TOOLS = ['mcp__artifacts__create_artifact', 'mcp__artifacts__update_artifact']
+export const ARTIFACT_TOOLS = ['mcp__artifacts__create_artifact', 'mcp__artifacts__update_artifact', 'mcp__artifacts__read_artifact']
+
+/** Design canvas placement (only designs use it; chats ignore it). */
+const FRAME_FIELDS = {
+  section: z.string().max(80).optional().describe('Design canvas only: the section (row) this frame belongs to, e.g. "Mockups · Home"'),
+  width: z.number().int().min(64).max(4096).optional().describe('Design canvas only: frame width in px, e.g. 390 for a phone screen'),
+  height: z.number().int().min(64).max(8192).optional().describe('Design canvas only: frame height in px, e.g. 844 for a phone screen')
+}
+
+function frameOf(args: { section?: string; width?: number; height?: number }, base?: ArtifactFrame): ArtifactFrame | undefined {
+  const f = { ...base }
+  if (args.section !== undefined) f.section = args.section.trim() || undefined
+  if (args.width !== undefined) f.width = args.width
+  if (args.height !== undefined) f.height = args.height
+  return f.section || f.width || f.height ? f : undefined
+}
 
 const TYPES = ['html', 'react', 'svg', 'markdown', 'code', 'mermaid'] as const
 
@@ -49,6 +64,8 @@ export function createArtifactServer(ctx: { sessionId: string; store: SecureStor
             .describe('Short kebab-case id, unique in this chat, e.g. "budget-dashboard"'),
           type: z.enum(TYPES),
           title: z.string().min(1).max(120),
+          // before content, so the canvas knows where a frame goes while it's still being written
+          ...FRAME_FIELDS,
           content: z.string(),
           language: z.string().optional().describe('Language for type "code", e.g. "python"')
         },
@@ -59,7 +76,7 @@ export function createArtifactServer(ctx: { sessionId: string; store: SecureStor
           if (existing) {
             // Re-creating an id is a full rewrite: keep history as a new version.
             existing.versions.push({ content: args.content, ts: now })
-            Object.assign(existing, { title: args.title, type: args.type as ArtifactType, language: args.language ?? existing.language, updatedAt: now })
+            Object.assign(existing, { title: args.title, type: args.type as ArtifactType, language: args.language ?? existing.language, frame: frameOf(args, existing.frame), updatedAt: now })
             save(list, existing)
             return ok(`Artifact "${existing.title}" (${existing.id}) already existed; saved this as version ${existing.versions.length}.`)
           }
@@ -70,6 +87,7 @@ export function createArtifactServer(ctx: { sessionId: string; store: SecureStor
             type: args.type as ArtifactType,
             language: args.language,
             versions: [{ content: args.content, ts: now }],
+            frame: frameOf(args),
             createdAt: now,
             updatedAt: now
           }
@@ -88,13 +106,15 @@ export function createArtifactServer(ctx: { sessionId: string; store: SecureStor
           old_str: z.string().optional(),
           new_str: z.string().optional(),
           content: z.string().optional().describe('Full new content (rewrite)'),
-          title: z.string().max(120).optional()
+          title: z.string().max(120).optional(),
+          ...FRAME_FIELDS
         },
         async (args) => {
           const list = load()
           const a = list.find((x) => x.id === args.id)
           if (!a) return fail(`No artifact with id "${args.id}" in this chat. Existing ids: ${list.map((x) => x.id).join(', ') || 'none'}.`)
           const current = a.versions[a.versions.length - 1].content
+          const moved = args.section !== undefined || args.width !== undefined || args.height !== undefined
           let next: string
           if (args.content !== undefined) next = args.content
           else if (args.old_str !== undefined) {
@@ -102,8 +122,14 @@ export function createArtifactServer(ctx: { sessionId: string; store: SecureStor
             if (count === 0) return fail(`old_str was not found in "${a.title}". Copy it exactly from the latest version, or pass content to rewrite.`)
             if (count > 1) return fail(`old_str appears ${count} times in "${a.title}"; include more surrounding text so it is unique.`)
             next = current.replace(args.old_str, () => args.new_str ?? '')
+          } else if (moved && !args.title) {
+            // only the frame's place or size changed: no new version
+            a.frame = frameOf(args, a.frame)
+            save(list, a)
+            return ok(`Moved or resized "${short(a.title)}".`)
           } else if (args.title) next = current
-          else return fail('Pass old_str/new_str, content, or title.')
+          else return fail('Pass old_str/new_str, content, title, or the frame’s section, width and height.')
+          if (moved) a.frame = frameOf(args, a.frame)
           const now = Date.now()
           a.versions.push({ content: next, ts: now })
           a.updatedAt = now
@@ -112,6 +138,26 @@ export function createArtifactServer(ctx: { sessionId: string; store: SecureStor
           return ok(`Updated "${short(a.title)}" to version ${a.versions.length}.`)
         },
         { alwaysLoad: true, searchHint: 'update edit artifact', annotations: { title: 'Update artifact' } }
+      ),
+      tool(
+        'read_artifact',
+        "Read an artifact's latest content (or one version), e.g. to reuse a design system's styles. Without an id, lists this chat's artifacts.",
+        { id: z.string().optional(), version: z.number().int().min(1).optional().describe('1 = the first version; default the latest') },
+        async (args) => {
+          const list = load()
+          if (!args.id)
+            return ok(
+              list.length
+                ? list.map((a) => `${a.id}: "${a.title}" (${a.type}, ${a.versions.length} version${a.versions.length === 1 ? '' : 's'}${a.frame?.section ? `, section "${a.frame.section}"` : ''})`).join('\n')
+                : 'No artifacts yet.'
+            )
+          const a = list.find((x) => x.id === args.id)
+          if (!a) return fail(`No artifact with id "${args.id}". Existing ids: ${list.map((x) => x.id).join(', ') || 'none'}.`)
+          const v = a.versions[(args.version ?? a.versions.length) - 1]
+          if (!v) return fail(`"${a.title}" has ${a.versions.length} version(s).`)
+          return ok(v.content)
+        },
+        { alwaysLoad: true, searchHint: 'read artifact content', annotations: { title: 'Read artifact', readOnlyHint: true } }
       )
     ]
   })

@@ -216,6 +216,138 @@ body.resizing-sidebar .design-resizer {
   max-width: 340px;
 }
 
+/* ---------- the board: frames in rows by section, panned and zoomed as one ---------- */
+.design-stage.design-board {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  cursor: default;
+}
+.board-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+.board-frame {
+  position: absolute;
+  overflow: hidden;
+  background: #fff;
+  box-shadow:
+    0 calc(1px / var(--z)) calc(3px / var(--z)) rgba(0, 0, 0, 0.14),
+    0 calc(8px / var(--z)) calc(28px / var(--z)) rgba(0, 0, 0, 0.14);
+}
+.board-frame.selected {
+  outline: calc(2px / var(--z)) solid var(--accent);
+  outline-offset: calc(3px / var(--z));
+}
+.board-frame iframe {
+  display: block;
+  border: 0;
+  background: #fff;
+  /* the board takes the mouse (to pan and pick frames); comment mode and an open frame hand it to the page */
+  pointer-events: none;
+}
+.design-board.commenting .board-frame iframe {
+  pointer-events: auto;
+}
+.board-frame .design-draft {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.board-frame.pending {
+  background: var(--bg-elev);
+  border: calc(2px / var(--z)) dashed var(--border-strong);
+  box-shadow: none;
+}
+.board-pending {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  opacity: 0.8;
+}
+.board-section {
+  position: absolute;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.board-label {
+  position: absolute;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.board-label.selected {
+  color: var(--accent);
+}
+.board-label-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-label .icon-btn {
+  flex-shrink: 0;
+  padding: 3px;
+  opacity: 0;
+}
+.board-label:hover .icon-btn,
+.board-label.selected .icon-btn {
+  opacity: 1;
+}
+body.panning-board {
+  cursor: grabbing;
+  user-select: none;
+}
+body.selecting-board {
+  user-select: none;
+}
+body.panning-board iframe,
+body.selecting-board iframe {
+  pointer-events: none;
+}
+.design-board.hand {
+  cursor: grab;
+}
+/* the box you drag to select frames */
+.board-marquee {
+  position: absolute;
+  z-index: 9;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+.design-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.design-count {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.design-present.on {
+  color: var(--accent);
+}
+/* presenting: the open frame fills the window */
+.design-canvas.presenting {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  border-left: 0;
+}
+
 /* the comment box under (or above) the element you clicked */
 .design-comment {
   position: absolute;
@@ -370,10 +502,10 @@ body.resizing-sidebar .design-resizer {
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 14px;
 }
+/* no overflow: hidden here, or the card's ⋯ menu is cut off; the preview rounds its own corners */
 .design-card {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 14px;
   background: var(--bg-elev);
@@ -390,6 +522,7 @@ body.resizing-sidebar .design-resizer {
   position: relative;
   height: 168px;
   overflow: hidden;
+  border-radius: 13px 13px 0 0;
   border-bottom: 1px solid var(--border);
   background: #fff;
 }

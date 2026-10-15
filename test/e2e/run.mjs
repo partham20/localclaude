@@ -98,7 +98,10 @@ app.whenReady().then(async () => {
    * `which`: part of the frame's address, e.g. 'artifact://draft' for the design while Claude is writing it.
    */
   const frame = (js, which = 'design=1') => {
-    const f = wc.mainFrame.framesInSubtree.find((x) => x.url.includes(which))
+    // never the app's own page: on Linux its file:///home/... address would match '/home/'
+    const all = wc.mainFrame.framesInSubtree.filter((x) => x !== wc.mainFrame && x.url.includes(which))
+    // a frame that just left the page can still be listed for a moment
+    const f = all.find((x) => !x.detached)
     return f ? f.executeJavaScript(js) : Promise.resolve(null)
   }
 

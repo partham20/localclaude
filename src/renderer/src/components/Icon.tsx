@@ -52,7 +52,10 @@ const PATHS: Record<string, string> = {
   slides: 'M3 4h18 M4 4v11h16V4 M12 15v5 M8 20h8',
   layout: 'M4 4h16v16H4z M4 9h16 M9 9v11',
   tablet: 'M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z M11 18h2',
-  comment: 'M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.4A8 8 0 1 1 21 12z M8.5 10.5h7 M8.5 13.5h4'
+  comment: 'M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.4A8 8 0 1 1 21 12z M8.5 10.5h7 M8.5 13.5h4',
+  expand: 'M14 4h6v6 M20 4l-7 7 M10 20H4v-6 M4 20l7-7',
+  play: 'M7 4.5v15l12-7.5z',
+  hand: 'M18 11V6a2 2 0 0 0-4 0v5 M14 10V4a2 2 0 0 0-4 0v6 M10 10.5V6a2 2 0 0 0-4 0v8 M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-5.9-2.4L3.4 16a2 2 0 0 1 3.2-2.4L8 15'
 }
 
 export function Icon({ name, size = 16, className = '' }: { name: string; size?: number; className?: string }) {
