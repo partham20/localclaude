@@ -223,7 +223,7 @@ async function artifactTool() {
   const client = new Client({ name: 't', version: '1' })
   await client.connect(b)
   const names = (await client.listTools()).tools.map((t) => t.name).sort()
-  assert.deepEqual(names, ['create_artifact', 'update_artifact'])
+  assert.deepEqual(names, ['create_artifact', 'read_artifact', 'update_artifact'])
   const call = async (name: string, args: any) => (await client.callTool({ name, arguments: args })) as any
   await call('create_artifact', { id: 'todo-app', type: 'react', title: 'Todo app', content: 'export default () => <p>hi</p>' })
   assert.equal(saved.chat1[0].versions.length, 1); assert.equal(changes.at(-1).title, 'Todo app')
@@ -233,6 +233,16 @@ async function artifactTool() {
   assert.ok((await call('update_artifact', { id: 'other', content: 'x' })).isError, 'unknown id fails')
   await call('update_artifact', { id: 'todo-app', content: 'v3', title: 'Todos' })
   assert.equal(saved.chat1[0].versions.length, 3); assert.equal(saved.chat1[0].title, 'Todos')
+  // design frames: a section and a size; moving one doesn't make a version; read_artifact gives it back
+  await call('create_artifact', { id: 'home', type: 'html', title: 'Home', section: 'Mockups', width: 390, height: 844, content: '<h1>Home</h1>' })
+  assert.deepEqual(saved.chat1[1].frame, { section: 'Mockups', width: 390, height: 844 })
+  assert.equal(saved.chat1[0].frame, undefined, 'chats have no frames')
+  assert.ok(!(await call('update_artifact', { id: 'home', section: 'Final' })).isError)
+  assert.deepEqual(saved.chat1[1].frame, { section: 'Final', width: 390, height: 844 }); assert.equal(saved.chat1[1].versions.length, 1)
+  assert.equal((await call('read_artifact', { id: 'home' })).content[0].text, '<h1>Home</h1>')
+  assert.equal((await call('read_artifact', { id: 'todo-app', version: 1 })).content[0].text, 'export default () => <p>hi</p>')
+  assert.match((await call('read_artifact', {})).content[0].text, /home: "Home" \(html, 1 version, section "Final"\)/)
+  assert.ok((await call('read_artifact', { id: 'nope' })).isError)
   assert.match(renderArtifactPage('react', 'export default function A(){}'), /importmap/)
   assert.match(renderArtifactPage('svg', '<svg/>'), /<svg\/>/)
   // every preview tells the panel when it throws (for "Fix with Claude")
@@ -1030,10 +1040,17 @@ function designMode() {
   assert.ok(ARTIFACT_TOOLS.every((t) => opts.allowedTools.includes(t)), 'the artifact tool never prompts in a design')
   const prompt: string = opts.systemPrompt.append
   assert.match(prompt, /<design kind="slides">/)
-  assert.match(prompt, /<section class="slide">/)
+  assert.match(prompt, /each slide is its own 1920×1080 frame/)
   assert.ok(prompt.includes(`Match the product in the working folder (${shop})`), 'told to match the folder’s design system')
   assert.match(prompt, /ONE create_artifact call/, 'written in one go, not in pieces')
   assert.match(prompt, /visible without JavaScript/)
+  // several frames are written by subagents at the same time, in the foreground so the turn lasts until they're done
+  assert.match(prompt, /subagent_type "design-screen"/)
+  assert.deepEqual(Object.keys(opts.agents), ['design-screen'])
+  assert.deepEqual(opts.agents['design-screen'].tools, ['mcp__artifacts__read_artifact', 'mcp__artifacts__create_artifact', 'mcp__artifacts__update_artifact'])
+  assert.equal(opts.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, '1')
+  assert.ok(Number(opts.env.CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS) >= 6)
+  assert.equal(opts.env.ANTHROPIC_API_KEY, undefined, 'still your subscription only')
   // only LocalClaude's own tools: your MCP servers, Chrome and computer use would slow it down
   st._s.settings.mcpServers = { github: { command: 'gh-mcp' } }
   st._s.settings.chromeIntegration = true
@@ -1046,6 +1063,7 @@ function designMode() {
   const chat = (m as any).get(m.create(process.cwd()).id).buildOptions()
   assert.equal(chat.mcpServers.artifacts, undefined, 'chats still follow the setting')
   assert.ok(chat.mcpServers.github && chat.mcpServers['computer-use'] && chat.extraArgs && !chat.strictMcpConfig, 'chats keep every tool')
+  assert.ok(!chat.agents && !chat.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, 'chats are unchanged')
   assert.ok(!(chat.systemPrompt.append ?? '').includes('<design'))
   assert.equal(m.create(process.cwd(), undefined, { kind: 'prototype' }).design?.matchStyle, undefined)
   // each kind has its own guidance; matching a codebase is only asked for when chosen
@@ -1066,13 +1084,16 @@ function streamingJson() {
   for (let i = 0; i <= full.length; i++) {
     const f = streamingFields(full.slice(0, i))
     for (const [k, v] of Object.entries(f)) {
-      const want = (JSON.parse(full) as any)[k]
+      const want = String((JSON.parse(full) as any)[k])
       assert.ok(want.startsWith(v.value), `${k} at ${i}: ${JSON.stringify(v.value)}`)
-      assert.equal(v.done, v.value === want && full.slice(0, i).includes(JSON.stringify(want)), `${k} done at ${i}`)
+      const raw = typeof (JSON.parse(full) as any)[k] === 'string' ? JSON.stringify(want) : want + ','
+      assert.equal(v.done, v.value === want && full.slice(0, i).includes(raw), `${k} done at ${i}`)
     }
   }
   const f = streamingFields(full)
-  assert.deepEqual(Object.keys(f), ['id', 'type', 'title', 'content'], 'numbers and objects are skipped')
+  assert.deepEqual(Object.keys(f), ['id', 'type', 'n', 'title', 'content'], 'numbers are read as text, objects skipped')
+  assert.deepEqual(f.n, { value: '3', done: true })
+  assert.deepEqual(streamingFields('{"id":"a","width":39'), { id: { value: 'a', done: true }, width: { value: '39', done: false } }, 'a number may still be growing')
   assert.equal(f.title.value, 'Tea "Shop"')
   assert.equal(f.content.value, '<h1>Hi</h1>\n<p>Ünïcode ☕ \\ done</p>')
   assert.deepEqual(streamingFields('{"id":"a","content":"<p>half\\'), { id: { value: 'a', done: true }, content: { value: '<p>half', done: false } }, 'a cut-off escape waits')

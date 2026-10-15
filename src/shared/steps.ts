@@ -8,7 +8,8 @@ export type ThinkingPart = Extract<ContentPart, { kind: 'thinking' }>
 export type Step = ToolPart | ThinkingPart
 
 export const COMPUTER_TOOL = 'mcp__computer-use__computer'
-export const isArtifactTool = (name: string): boolean => name.startsWith('mcp__artifacts__')
+/** Making or changing an artifact (shown as its card); reading one is an ordinary step. */
+export const isArtifactTool = (name: string): boolean => name === 'mcp__artifacts__create_artifact' || name === 'mcp__artifacts__update_artifact'
 export const isMemoryTool = (name: string): boolean => name.startsWith('mcp__memory__')
 export const isChatsTool = (name: string): boolean => name.startsWith('mcp__chats__')
 

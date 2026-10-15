@@ -9,7 +9,7 @@ export interface StreamingField {
 
 const ESCAPES: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '"': '"', '\\': '\\', '/': '/' }
 
-/** The top-level string fields of a (possibly cut-off) JSON object; other values are skipped. */
+/** The top-level string and number fields of a (possibly cut-off) JSON object; other values are skipped. */
 export function streamingFields(json: string): Record<string, StreamingField> {
   const out: Record<string, StreamingField> = {}
   let i = json.indexOf('{')
@@ -64,7 +64,14 @@ export function streamingFields(json: string): Record<string, StreamingField> {
       out[key.value] = str()
       continue
     }
-    // a number, boolean, null, object or array: skip it (nested strings and brackets included)
+    // a number, as its text (e.g. a frame's width); done once something follows it
+    const num = /^-?[\d.eE+-]+/.exec(json.slice(i, i + 32))
+    if (num) {
+      i += num[0].length
+      out[key.value] = { value: num[0], done: i < n }
+      continue
+    }
+    // a boolean, null, object or array: skip it (nested strings and brackets included)
     let depth = 0
     while (i < n) {
       const c = json[i]

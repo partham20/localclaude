@@ -8,7 +8,8 @@ import { allStyles } from '../../../shared/styles'
 import { designKind } from '../../../shared/design'
 import { ArtifactPanel, type PanelState } from './ArtifactPanel'
 import { ChoiceDialog } from './ChoiceDialog'
-import { DesignCanvas } from './DesignCanvas'
+import { DesignCanvas, type PendingFrame } from './DesignCanvas'
+import { streamingFields } from '../../../shared/partialJson'
 import { changedFiles, FilesPanel } from './FilesPanel'
 import { FindBar } from './FindBar'
 import { Icon } from './Icon'
@@ -351,6 +352,25 @@ export function ChatView(props: {
       }
     return null
   }, [top, busy, design])
+  // a design: frames that subagents are writing at the same time (placeholders until each is saved)
+  const pendingFrames = useMemo((): PendingFrame[] => {
+    if (!design || !busy) return []
+    let out: PendingFrame[] = []
+    for (let i = top.length - 1; i >= 0 && top[i].role !== 'user'; i--) {
+      const mine: PendingFrame[] = []
+      for (const p of top[i].parts) {
+        if (p.kind !== 'tool' || (p.name !== 'Agent' && p.name !== 'Task') || p.done) continue
+        const input = parsedInput(p)
+        const f = Object.keys(input).length ? null : streamingFields(p.inputJsonPartial ?? '')
+        const type = String(input.subagent_type ?? (f?.subagent_type?.done ? f.subagent_type.value : ''))
+        if (type && type !== 'design-screen') continue
+        if ((byParent.get(p.toolUseId) ?? []).some((m) => m.parts.some((q) => q.kind === 'tool' && isArtifactTool(q.name)))) continue
+        mine.push({ key: p.toolUseId, title: String(input.description ?? f?.description?.value ?? '') || 'Frame' })
+      }
+      out = [...mine, ...out]
+    }
+    return out
+  }, [top, byParent, busy, design])
   // Claude's task list for the reply it's working on
   const liveTodos = useMemo((): Todo[] | null => {
     if (!busy) return null
@@ -930,6 +950,7 @@ export function ChatView(props: {
             onState={setDesignShown}
             busy={busy}
             writing={writing}
+            pending={pendingFrames}
             onSend={(text) => {
               stick.current = true
               void api.send({ sessionId: meta.id, text, attachments: [] })

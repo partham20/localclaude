@@ -370,8 +370,17 @@ export interface Artifact {
   /** for type "code" */
   language?: string
   versions: ArtifactVersion[]
+  /** in a design: where the frame sits on the canvas and its size */
+  frame?: ArtifactFrame
   createdAt: number
   updatedAt: number
+}
+
+export interface ArtifactFrame {
+  /** frames with the same section sit in one row under its heading */
+  section?: string
+  width?: number
+  height?: number
 }
 
 // ---------------------------------------------------------------- design

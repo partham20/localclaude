@@ -1,31 +1,35 @@
-// Design space: Claude's instructions for a design, and the script that lets you comment on
-// an element of the design on the canvas (the page runs in a sandboxed frame, so it talks by postMessage).
+// Design space: Claude's instructions for a design, the subagent that writes one frame (so the frames
+// of a design are written at the same time), and the scripts the canvas puts in its pages: comment mode,
+// and the page that shows a design while it's being written. Pages run in sandboxed frames and talk by postMessage.
 import type { DesignInfo, DesignKind } from '../shared/types'
 
 const KIND_GUIDE: Record<DesignKind, string> = {
-  prototype: `This is an interactive prototype. Start with the main screen and make what's on it work like the real product (buttons, tabs, menus, a modal, a form that responds), with fake data and in-memory state. Build other screens when the user asks for them; then switch screens with a little JavaScript, and keep the first screen visible without it. Make it responsive: it must work at 1440px, 834px and 390px wide. For a mobile app, center a phone-sized layout on wider screens.`,
-  slides: `This is a slide deck. Make each slide a <section class="slide"> exactly 1920×1080 px, stacked vertically with a 40px gap on a neutral background, so the canvas shows the deck as one scrolling page. Add print CSS so every slide becomes one PDF page: @page { size: 1920px 1080px; margin: 0 }, and in @media print remove the gap and the page background and give .slide { break-after: page }. Use a consistent master layout (title slide, section headers, content slides, a closing slide), large type (body text at least 28px), one idea per slide, charts drawn with inline SVG or CSS where numbers matter, and slide numbers.`,
-  wireframe: `This is a wireframe, low fidelity on purpose: grayscale only, simple boxes and lines, image placeholders (a box with a cross), real but short labels, and a plain system font. Focus on layout, hierarchy and flow rather than polish. For several screens, lay them out side by side, each in a labeled frame, with short notes on the key interactions.`,
-  onepager: `This is a printable page, like a one-pager, flyer, poster, résumé or report page. Design it as an A4 page (794×1123 px), or US Letter (816×1056 px) if the user asks for it, centered on a neutral background with a soft shadow. Add print CSS so it exports as exactly one PDF page with its background: @page { size: A4; margin: 0 } (or letter), and in @media print remove the surrounding margin, background and shadow.`,
-  other: `Choose the format that fits the request (a landing page, poster, social media graphic, email, logo, icon set, …) and size the layout for it. Show a fixed-size graphic as an artboard at its real pixel size, centered on a neutral background.`
+  prototype: `This is an interactive prototype. Make each frame work like the real product (buttons, tabs, menus, a modal, a form that responds) with fake data and in-memory state. Web pages are 1440×900 frames that must also work at 834px and 390px wide (the user can switch); a mobile app's screens are 390×844 frames.`,
+  slides: `This is a slide deck: each slide is its own 1920×1080 frame in the section "Slides", titled "1 · Title", "2 · …" in order. Use a consistent master layout (title slide, section headers, content slides, a closing slide), large type (body text at least 28px), one idea per slide, charts drawn with inline SVG or CSS where numbers matter, and slide numbers. The deck exports as one PDF with a page per slide. A deck has several frames, so follow the steps for several frames, with the deck's look as the design system.`,
+  wireframe: `This is a wireframe, low fidelity on purpose: grayscale only, simple boxes and lines, image placeholders (a box with a cross), real but short labels, and a plain system font. Focus on layout, hierarchy and flow rather than polish, with short notes on the key interactions. Each screen is its own frame (1440×900 for desktop, 390×844 for mobile).`,
+  onepager: `This is a printable page, like a one-pager, flyer, poster, résumé or report page: an A4 frame (794×1123), or US Letter (816×1056) if the user asks for it, that fills the frame exactly and exports as one PDF page with its background.`,
+  other: `Choose the format that fits the request (a landing page, poster, social media graphic, email, logo, icon set, …) and give the frame its real size.`
 }
 
 /** Instructions added to Claude's system prompt in a design. */
 export function designPrompt(design: DesignInfo, cwd: string): string {
   const lines = [
     `<design kind="${design.kind}">`,
-    `This chat is a design in LocalClaude's Design space. The user sees your work on a large canvas beside this chat (not in a side panel). They can view it at desktop, tablet and mobile widths, click any element to comment on it, go back to earlier versions, and export it as HTML, PDF or PNG.`,
+    `This chat is a design in LocalClaude's Design space, which works like Claude Design. Beside this chat the user sees a board: every artifact is a frame on it, in rows by section, each labeled with its title. They can zoom and pan, open a frame to use it (and view it at desktop, tablet and mobile widths), click any element to comment on it, go back to earlier versions, present the frames, and export them as PNG, PDF or HTML.`,
     ``,
     `How to work (the user is watching, so speed matters):`,
-    `- Start writing the design right away. No to-do list, no exploring files${design.matchStyle ? ' beyond the style check below' : ''}, and keep your planning short.`,
-    `- Write the whole first version in ONE create_artifact call of type "html": a complete, self-contained page with its CSS in a <style> in the head, then the content from top to bottom, then any JavaScript in one <script> at the end. The canvas shows the page live as you write it. Never write a skeleton to fill in later, and never split one version over several calls. Fonts, icons and libraries may load from public CDNs (Google Fonts, cdnjs, jsDelivr, unpkg). Use type "react" only if the user asks for it.`,
-    `- Keep the first version focused, about 250 to 450 lines: the main screen or page, done well. Add more when the user asks. Never embed base64 images or long data.`,
-    `- All content must be visible without JavaScript: don't hide sections until a script runs (no fade-in-on-scroll that starts invisible, no content rendered only by JS). Use JavaScript for interaction only.`,
-    `- Make the first version straight away from what the user described. Ask first only if the request is truly unclear; otherwise make sensible choices and mention the main ones briefly.`,
-    `- For changes, keep the same artifact id and use update_artifact with old_str/new_str, one small replacement per call, instead of rewriting the page; rewrite with content only when most of the page changes. Every change becomes a version the user can go back to. Create another artifact only when the user asks for alternatives to compare.`,
+    `- Start right away. No to-do list, no exploring files${design.matchStyle ? ' beyond the style check below' : ''}, and keep your planning short. Make sensible choices and mention the main ones briefly; ask first only if the request is truly unclear.`,
+    `- Every frame is one artifact of type "html": a complete, self-contained page with its CSS in a <style> in the head, then the content from top to bottom, then any JavaScript in one <script> at the end. Give it a title (its label on the board), a section, and its real size as width and height (390×844 for a phone screen, 1440×900 for a desktop page, 1920×1080 for a slide, 1200×900 for a board). Fonts, icons and libraries may load from public CDNs (Google Fonts, cdnjs, jsDelivr, unpkg). Use type "react" only if the user asks for it.`,
+    `- One or two frames: write each yourself in ONE create_artifact call; the board shows it live as you write. Never write a skeleton to fill in later, and never split one frame over several calls.`,
+    `- Three or more frames (a flow, several pages, light and dark versions, a deck): work in parallel, which is much faster.`,
+    `  1. First write the design system in ONE create_artifact call: id "design-system", title "Design system", section "Design system", 1200×900. It's a board showing the palette (with contrast), the type scale and the key components, with every token as a CSS variable in one :root block and the components as reusable classes.`,
+    `  2. Then, in ONE message, call the Agent tool once per frame with subagent_type "design-screen", all in that same message so they run at the same time. Give each a short brief: the design system's id, then the frame's id, title, section and size, what's on it and its real content. They read the design system themselves and write their own frame.`,
+    `  3. Don't write those frames yourself.`,
+    `- Keep each frame focused (about 150 to 400 lines). All content must be visible without JavaScript (no fade-in-on-scroll that starts invisible, no content rendered only by JS); use JavaScript for interaction only. Never embed base64 images or long data.`,
     `- Make it look finished and intentional: real, specific content (never lorem ipsum), a clear type hierarchy, consistent spacing on a 4/8px grid, a restrained palette with one accent color, accessible contrast, and hover, focus and active states for anything interactive. Use inline SVG, CSS shapes and gradients for illustrations and icons; use photos only from a stable URL (such as images.unsplash.com) and never leave a broken image.`,
-    `- When the user comments on an element, their message gives its CSS selector, its text and the start of its HTML. Change that element as asked (usually with update_artifact old_str/new_str) and keep the rest of the design as it is.`,
-    `- The design lives in the artifact: don't create or edit files in the working folder unless the user asks you to.`,
+    `- For changes, keep the frame's id and use update_artifact with old_str/new_str, one small replacement per call, instead of rewriting; rewrite with content only when most of the frame changes. When a change touches several frames, update them all in one message. Every change becomes a version the user can go back to. A new frame or section is fine whenever the user asks for one.`,
+    `- When the user comments on an element, their message names the frame, the element's CSS selector, its text and the start of its HTML. Change that element as asked and keep the rest as it is.`,
+    `- The design lives in the artifacts: don't create or edit files in the working folder unless the user asks you to.`,
     `- Reply in a sentence or two: what you made or changed, and perhaps one or two ideas for next steps. Don't paste the code into the chat.`,
     ``,
     KIND_GUIDE[design.kind] ?? KIND_GUIDE.other
@@ -33,10 +37,29 @@ export function designPrompt(design: DesignInfo, cwd: string): string {
   if (design.matchStyle)
     lines.push(
       ``,
-      `Match the product in the working folder (${cwd}). Before designing, take a quick look (a handful of files, found with Glob or Grep) at its design system: theme tokens and CSS variables, Tailwind or other style config, global styles, the component library, fonts, and the logo. Use the same colors, type, radii, spacing and component patterns (copy small SVG logos and icons inline), and say in a line what you based the design on.`
+      `Match the product in the working folder (${cwd}). Before designing, take a quick look (a handful of files, found with Glob or Grep) at its design system: theme tokens and CSS variables, Tailwind or other style config, global styles, the component library, fonts, and the logo. Use the same colors, type, radii, spacing and component patterns (copy small SVG logos and icons inline) in the design system board and every frame, and say in a line what you based the design on.`
     )
   lines.push('</design>')
   return lines.join('\n')
+}
+
+/** The subagent that writes one frame, so the frames of a design are written at the same time. */
+export const SCREEN_AGENT = {
+  description:
+    "Designs one frame of the current design (a screen, page, slide or board) and saves it with create_artifact. Brief it with the design system's id, the frame id, title, section, size, what is on it and its content; it reads the design system itself.",
+  prompt: [
+    `You design one frame of a design in LocalClaude's Design space and save it as an artifact. Other designers are writing the other frames at the same time, so the shared design system keeps everything consistent.`,
+    ``,
+    `1. Read the design system: read_artifact with the id your brief gives for it. If the brief doesn't give one, call read_artifact with no id to list the frames, then read the one in the "Design system" section.`,
+    `2. Write your frame in ONE create_artifact call: type "html", with the id, title, section, width and height from your brief, and a complete, self-contained page. Copy the design system's :root variables and the component classes you use into a <style> in the head, then write the content from top to bottom, then any JavaScript in one <script> at the end.`,
+    `3. Reply with one short line saying what you made.`,
+    ``,
+    `The frame fills its size (a 390×844 phone screen shows one screen). Use real, specific content from your brief, never lorem ipsum. All content is visible without JavaScript; JavaScript is for interaction only. Keep it to about 150 to 400 lines, with icons as small inline SVG and no base64 images. Start writing right away: don't read other files, don't make other artifacts, and don't ask questions.`
+  ].join('\n'),
+  tools: ['mcp__artifacts__read_artifact', 'mcp__artifacts__create_artifact', 'mcp__artifacts__update_artifact'],
+  model: 'inherit',
+  omitClaudeMd: true,
+  maxTurns: 6
 }
 
 /**
