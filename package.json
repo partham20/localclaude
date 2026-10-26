@@ -1,6 +1,6 @@
 {
   "name": "localclaude",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Personal desktop app for Claude, powered by Claude Code and your Claude subscription. Data stays on this machine.",
   "main": "out/main/index.js",
   "scripts": {
