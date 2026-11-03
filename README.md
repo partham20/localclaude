@@ -96,6 +96,16 @@ Anthropic's built-in computer use in the Claude Code CLI is macOS-only, and **Co
 
 LocalClaude removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and the Bedrock/Vertex/Foundry switches from the environment of every Claude Code process it starts. Requests always go through your Claude.ai login. The status line warns if Claude Code ever reports an API-key source.
 
+### Optional: use a Console API key for chats
+
+Set `LOCALCLAUDE_API_KEY` when you start the app to bill chat and design sessions to that Console key. Titles, usage checks, sign-in and remote control stay on your subscription, so you still need to be signed in, and the usage limits shown in the app don't reflect API spend. `ANTHROPIC_API_KEY` is still ignored.
+
+```bash
+LOCALCLAUDE_API_KEY=sk-ant-... npm run dev
+```
+
+Never commit the key. Check the Console after a small test message to confirm which balance was charged.
+
 Anthropic currently lets the Agent SDK use your subscription's normal usage limits for personal projects like this. They announced, then paused, a plan to move SDK usage to a separate monthly credit; if that returns, this app would draw from that credit instead. Don't distribute builds for other people to sign in with; that needs Anthropic's approval.
 
 ## How "this machine only" works
