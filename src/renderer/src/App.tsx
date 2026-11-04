@@ -451,15 +451,23 @@ export default function App() {
     await refreshAuth()
   }, [refreshAuth])
 
-  const updateSettings = useCallback(async (patch: Partial<AppSettings>) => {
-    setSettings(await api.setSettings(patch))
-    // Chats restart to bill the other source. Until each idle one starts again (and reports what it
-    // really uses), forget its old report, so it doesn't show a stale warning. Busy ones keep theirs.
-    if ('chatBilling' in patch)
+  // Chats restart when what they bill changes (the choice, or a key saved or removed). Until each idle
+  // one starts again (and reports what it really uses), forget its old report, so it doesn't show a
+  // stale warning. Busy ones keep theirs: they still bill the old source until their turn ends.
+  const forgetIdleKeySources = useCallback(
+    () =>
       setRuntime((r) =>
         Object.fromEntries(Object.entries(r).map(([id, rt]) => [id, rt.status === 'idle' && rt.init ? { ...rt, init: { ...rt.init, apiKeySource: '' } } : rt]))
-      )
-  }, [])
+      ),
+    []
+  )
+  const updateSettings = useCallback(
+    async (patch: Partial<AppSettings>) => {
+      setSettings(await api.setSettings(patch))
+      if ('chatBilling' in patch) forgetIdleKeySources()
+    },
+    [forgetIdleKeySources]
+  )
 
   // a notification was clicked / the global shortcut was pressed
   useEffect(() => api.onOpenSession((id) => openChat(id)), [openChat])
@@ -730,6 +738,10 @@ export default function App() {
           onChange={updateSettings}
           onClose={() => setSettingsOpen(false)}
           onLogout={signOut}
+          onAuthChanged={async () => {
+            forgetIdleKeySources()
+            await refreshAuth()
+          }}
           globalMemory={globalMemory}
           onGlobalMemory={setGlobalMemory}
           onExportAll={() => setExportReq({ scope: 'all' })}

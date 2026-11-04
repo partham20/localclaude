@@ -58,20 +58,62 @@ export function subscriptionEnv(): Record<string, string | undefined> {
   return env
 }
 
-/** True if LOCALCLAUDE_API_KEY is set. The key itself never leaves the main process. */
+/** A Console key saved in Settings (kept in the encrypted vault; set at start-up and when it changes). */
+let savedConsoleKey: string | undefined
+export function setSavedConsoleKey(key: string | undefined): void {
+  savedConsoleKey = key || undefined
+}
+
+/** The Console key chats and designs can bill: LOCALCLAUDE_API_KEY wins over one saved in Settings. */
+function consoleKey(): string | undefined {
+  return process.env.LOCALCLAUDE_API_KEY || savedConsoleKey
+}
+
+/** Where the Console key comes from, if there is one. The key itself never leaves the main process. */
+export function consoleKeySource(): 'env' | 'saved' | undefined {
+  return process.env.LOCALCLAUDE_API_KEY ? 'env' : savedConsoleKey ? 'saved' : undefined
+}
+
+/** True if there's a Console key (LOCALCLAUDE_API_KEY, or one saved in Settings). */
 export function consoleKeySet(): boolean {
-  return !!process.env.LOCALCLAUDE_API_KEY
+  return !!consoleKey()
+}
+
+/** Tidy and sanity-check a pasted key. Returns an error to show, or the key. */
+export function cleanConsoleKey(raw: string): { key: string } | { error: string } {
+  const key = String(raw ?? '').trim()
+  if (!key) return { error: 'Paste a key first.' }
+  if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key)) return { error: 'That doesn’t look like a Console API key (they start with sk-ant-).' }
+  return { key }
+}
+
+/**
+ * Ask the API whether it accepts the key (listing models costs nothing). Only a clear "no"
+ * (401/403) stops it being saved; if the check itself fails (offline), the key is saved anyway.
+ */
+export async function checkConsoleKey(key: string, fetchImpl: typeof fetch = fetch): Promise<{ ok: true; warning?: string } | { ok: false; error: string }> {
+  try {
+    const r = await fetchImpl('https://api.anthropic.com/v1/models?limit=1', {
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      signal: AbortSignal.timeout(10000)
+    })
+    if (r.status === 401 || r.status === 403) return { ok: false, error: 'Anthropic rejected this key. Check it in the Console and try again.' }
+    if (!r.ok) return { ok: true, warning: `Couldn’t confirm the key (the API answered ${r.status}); it’s saved anyway.` }
+    return { ok: true }
+  } catch {
+    return { ok: true, warning: 'Couldn’t reach Anthropic to check the key; it’s saved anyway.' }
+  }
 }
 
 /**
  * Environment for chat and design sessions only. Uses the subscription unless
- * LOCALCLAUDE_API_KEY is set, in which case those sessions bill that Console key
+ * there's a Console key (LOCALCLAUDE_API_KEY, or one saved in Settings), in which case those sessions bill it
  * (unless `useConsoleKey` is false: Settings → Account → "Chats and designs use").
  * Titles, usage checks, sign-in and remote control stay on subscriptionEnv().
  */
 export function agentEnv(useConsoleKey = true): Record<string, string | undefined> {
   const env = subscriptionEnv()
-  const key = process.env.LOCALCLAUDE_API_KEY
+  const key = consoleKey()
   if (key && useConsoleKey) env.ANTHROPIC_API_KEY = key
   delete env.LOCALCLAUDE_API_KEY
   return env
@@ -98,11 +140,16 @@ function run(args: string[], timeoutMs = 20000): Promise<{ code: number | null; 
   })
 }
 
+/** Whether there's a Console key and where it's from: never the key itself. */
+function keyStatus(): Pick<AuthStatus, 'usingConsoleKey' | 'consoleKeySource' | 'consoleKeySaved'> {
+  return { usingConsoleKey: consoleKeySet(), consoleKeySource: consoleKeySource(), consoleKeySaved: !!savedConsoleKey }
+}
+
 export async function authStatus(): Promise<AuthStatus> {
   if (process.env.LOCALCLAUDE_FAKE_AGENT)
-    return { loggedIn: true, authMethod: 'claude.ai', email: 'e2e@example.com', subscriptionType: 'max', usingApiKeyEnv: false, usingConsoleKey: consoleKeySet() }
+    return { loggedIn: true, authMethod: 'claude.ai', email: 'e2e@example.com', subscriptionType: 'max', usingApiKeyEnv: false, ...keyStatus() }
   const r = await run(['auth', 'status', '--json'])
-  const base: AuthStatus = { loggedIn: false, usingApiKeyEnv: hadApiKeyInEnv(), usingConsoleKey: consoleKeySet() }
+  const base: AuthStatus = { loggedIn: false, usingApiKeyEnv: hadApiKeyInEnv(), ...keyStatus() }
   try {
     const j = JSON.parse(r.out)
     return {

@@ -58,6 +58,9 @@ const api = {
   loginInput: (text: string) => inv<void>('auth:loginInput', text),
   cancelLogin: () => inv<void>('auth:cancelLogin'),
   logout: () => inv<void>('auth:logout'),
+  /** save a Console API key (checked in the main process; it's never sent back) */
+  saveConsoleKey: (key: string) => inv<{ ok: boolean; error?: string; warning?: string }>('consoleKey:save', key),
+  removeConsoleKey: () => inv<{ ok: boolean }>('consoleKey:remove'),
   onLogin: (cb: (e: LoginEvent) => void) => on<LoginEvent>('login:event', cb),
 
   getSettings: () => inv<AppSettings>('settings:get'),

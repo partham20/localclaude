@@ -1,4 +1,6 @@
-// Shows what chats and designs bill (subscription or Console API key). No `api` import, so the tests can render it.
+// Shows what chats and designs bill (subscription or Console API key), and sets up the key.
+// No `api` import, so the tests can render it.
+import { useState } from 'react'
 import type { AppSettings, AuthStatus } from '../../../shared/types'
 import { CONSOLE_KEY_NOTE, accountLabel, sessionBilling } from '../../../shared/billing'
 
@@ -13,34 +15,107 @@ export function AccountPlan({ auth, consoleKey }: { auth: AuthStatus; consoleKey
   )
 }
 
+export type SaveKeyResult = { ok: boolean; error?: string; warning?: string }
+
 /**
- * Settings → Account, only when LOCALCLAUDE_API_KEY is set: pick what chats and designs bill,
- * and say what uses which. Renders nothing without the variable, so that page looks as before.
+ * Settings → Account: add or remove a Console API key, and once there is one, pick what chats
+ * and designs bill and say what uses which. The key is typed here once and never shown again.
  */
 export function ConsoleKeySettings({
   auth,
   settings,
-  onChange
+  onChange,
+  onSaveKey,
+  onRemoveKey
 }: {
   auth: AuthStatus
   settings: Pick<AppSettings, 'chatBilling'>
   onChange: (patch: Partial<AppSettings>) => void
+  onSaveKey: (key: string) => Promise<SaveKeyResult>
+  onRemoveKey: () => Promise<void>
 }) {
-  if (!auth.usingConsoleKey) return null
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<{ error?: string; warning?: string } | null>(null)
   const key = settings.chatBilling !== 'subscription'
+  const save = async (): Promise<void> => {
+    setBusy(true)
+    setMessage(null)
+    try {
+      const r = await onSaveKey(draft)
+      if (r.ok) setDraft('')
+      setMessage(r.error || r.warning ? { error: r.error, warning: r.warning } : null)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const remove = async (): Promise<void> => {
+    setBusy(true)
+    setMessage(null)
+    try {
+      await onRemoveKey()
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <div className="field console-key">
-      <label>Chats and designs use</label>
-      <select className="select" value={key ? 'apiKey' : 'subscription'} onChange={(e) => onChange({ chatBilling: e.target.value as AppSettings['chatBilling'] })}>
-        <option value="apiKey">Console API key</option>
-        <option value="subscription">Claude subscription</option>
-      </select>
-      <p className="notice console-key-note">
-        {key
-          ? CONSOLE_KEY_NOTE
-          : 'LOCALCLAUDE_API_KEY is set, but chats and designs use your subscription, like everything else. Switch above to bill the key.'}
-      </p>
-      <p className="muted small">Chats that are busy switch when they finish their turn.</p>
+      <label>Console API key</label>
+      {!auth.usingConsoleKey ? (
+        <>
+          <p className="muted small">
+            Optional. Add a key from the Anthropic Console to bill chats and designs to it instead of your subscription. Titles, usage checks, sign-in and
+            remote control stay on your subscription.
+          </p>
+          <form
+            className="row gap"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (draft.trim() && !busy) void save()
+            }}
+          >
+            <input
+              className="input grow mono console-key-input"
+              type="password"
+              placeholder="sk-ant-…"
+              autoComplete="off"
+              spellCheck={false}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <button type="submit" className="btn" disabled={!draft.trim() || busy}>
+              {busy ? 'Checking…' : 'Save key'}
+            </button>
+          </form>
+          <p className="muted small">It’s stored encrypted on this machine, like your chats, and isn’t included in exports or backups.</p>
+        </>
+      ) : (
+        <>
+          <p className="muted small console-key-status">
+            {auth.consoleKeySource === 'env'
+              ? `Set by LOCALCLAUDE_API_KEY when LocalClaude started${auth.consoleKeySaved ? ', so it’s used instead of the key saved here' : ''}.`
+              : 'A key is saved, encrypted on this machine.'}
+          </p>
+          {auth.consoleKeySaved && (
+            <div className="row gap">
+              <button type="button" className="btn danger console-key-remove" disabled={busy} onClick={() => void remove()}>
+                Remove saved key
+              </button>
+            </div>
+          )}
+          <label>Chats and designs use</label>
+          <select className="select" value={key ? 'apiKey' : 'subscription'} onChange={(e) => onChange({ chatBilling: e.target.value as AppSettings['chatBilling'] })}>
+            <option value="apiKey">Console API key</option>
+            <option value="subscription">Claude subscription</option>
+          </select>
+          <p className="notice console-key-note">
+            {key ? CONSOLE_KEY_NOTE : 'You have a Console API key, but chats and designs use your subscription, like everything else. Switch above to bill the key.'}
+          </p>
+          <p className="muted small">Chats that are busy switch when they finish their turn.</p>
+        </>
+      )}
+      {message?.error && <p className="danger-text small console-key-error">{message.error}</p>}
+      {message?.warning && <p className="warn-text small">{message.warning}</p>}
     </div>
   )
 }
