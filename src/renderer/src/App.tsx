@@ -37,6 +37,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { SIDEBAR_WIDTH, Sidebar } from './components/Sidebar'
 import { Icon } from './components/Icon'
 import { Spark } from './components/Spark'
+import { billsConsoleKey } from '../../shared/billing'
 
 export interface SessionRuntime {
   status: 'idle' | 'running' | 'starting'
@@ -124,6 +125,8 @@ export default function App() {
   const [permissions, setPermissions] = useState<PermissionRequest[]>([])
   const [rateLimit, setRateLimit] = useState<RateLimitInfo | null>(null)
   const [settingsOpen, setSettingsOpen] = useState<false | string>(false)
+  /** chats and designs bill LOCALCLAUDE_API_KEY (false without it, so nothing changes) */
+  const consoleKey = !!auth && billsConsoleKey(auth, settings)
   const [transcript, setTranscriptState] = useState<TranscriptMode>(loadTranscriptMode)
   const sidebar = useSidebar()
   const [sideWidth, setSideWidth] = useState(() => {
@@ -450,6 +453,12 @@ export default function App() {
 
   const updateSettings = useCallback(async (patch: Partial<AppSettings>) => {
     setSettings(await api.setSettings(patch))
+    // Chats restart to bill the other source. Until each idle one starts again (and reports what it
+    // really uses), forget its old report, so it doesn't show a stale warning. Busy ones keep theirs.
+    if ('chatBilling' in patch)
+      setRuntime((r) =>
+        Object.fromEntries(Object.entries(r).map(([id, rt]) => [id, rt.status === 'idle' && rt.init ? { ...rt, init: { ...rt.init, apiKeySource: '' } } : rt]))
+      )
   }, [])
 
   // a notification was clicked / the global shortcut was pressed
@@ -545,6 +554,7 @@ export default function App() {
         runtime={runtime}
         pending={pendingBySession}
         auth={auth}
+        consoleKey={consoleKey}
         canBack={canBack}
         canForward={canForward}
         onBack={() => stepNav(-1)}
@@ -671,6 +681,7 @@ export default function App() {
             permission={permissions.find((p) => p.sessionId === active.id) ?? null}
             settings={settings}
             rateLimit={rateLimit}
+            consoleKey={consoleKey}
             transcript={transcript}
             onTranscript={setTranscript}
             onPermissionDone={(rid) => setPermissions((p) => p.filter((x) => x.requestId !== rid))}

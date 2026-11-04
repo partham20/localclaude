@@ -58,15 +58,21 @@ export function subscriptionEnv(): Record<string, string | undefined> {
   return env
 }
 
+/** True if LOCALCLAUDE_API_KEY is set. The key itself never leaves the main process. */
+export function consoleKeySet(): boolean {
+  return !!process.env.LOCALCLAUDE_API_KEY
+}
+
 /**
  * Environment for chat and design sessions only. Uses the subscription unless
- * LOCALCLAUDE_API_KEY is set, in which case those sessions bill that Console key.
+ * LOCALCLAUDE_API_KEY is set, in which case those sessions bill that Console key
+ * (unless `useConsoleKey` is false: Settings → Account → "Chats and designs use").
  * Titles, usage checks, sign-in and remote control stay on subscriptionEnv().
  */
-export function agentEnv(): Record<string, string | undefined> {
+export function agentEnv(useConsoleKey = true): Record<string, string | undefined> {
   const env = subscriptionEnv()
   const key = process.env.LOCALCLAUDE_API_KEY
-  if (key) env.ANTHROPIC_API_KEY = key
+  if (key && useConsoleKey) env.ANTHROPIC_API_KEY = key
   delete env.LOCALCLAUDE_API_KEY
   return env
 }
@@ -93,9 +99,10 @@ function run(args: string[], timeoutMs = 20000): Promise<{ code: number | null; 
 }
 
 export async function authStatus(): Promise<AuthStatus> {
-  if (process.env.LOCALCLAUDE_FAKE_AGENT) return { loggedIn: true, authMethod: 'claude.ai', email: 'e2e@example.com', subscriptionType: 'max', usingApiKeyEnv: false }
+  if (process.env.LOCALCLAUDE_FAKE_AGENT)
+    return { loggedIn: true, authMethod: 'claude.ai', email: 'e2e@example.com', subscriptionType: 'max', usingApiKeyEnv: false, usingConsoleKey: consoleKeySet() }
   const r = await run(['auth', 'status', '--json'])
-  const base: AuthStatus = { loggedIn: false, usingApiKeyEnv: hadApiKeyInEnv() }
+  const base: AuthStatus = { loggedIn: false, usingApiKeyEnv: hadApiKeyInEnv(), usingConsoleKey: consoleKeySet() }
   try {
     const j = JSON.parse(r.out)
     return {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { BUILTIN_STYLES } from '../../../shared/styles'
 import type { AppSettings, PlanUsage, ResponseStyle } from '../../../shared/types'
 import { api } from '../api'
+import { UsageIntro } from './Billing'
 import { Icon } from './Icon'
 
 type OnChange = (p: Partial<AppSettings>) => Promise<void>
@@ -129,7 +130,7 @@ function until(iso: string | null): string {
 }
 
 /** Your plan's usage limits, like the Claude app's Usage page. */
-export function UsagePanel() {
+export function UsagePanel({ consoleKey = false }: { consoleKey?: boolean }) {
   const [usage, setUsage] = useState<PlanUsage | null>(null)
   const [loading, setLoading] = useState(false)
   const load = async (): Promise<void> => {
@@ -144,7 +145,7 @@ export function UsagePanel() {
     <div className="usage">
       <div className="row gap">
         <p className="muted small grow">
-          Your Claude plan’s limits, shared with the Claude app and Claude Code{usage?.subscription ? ` (${usage.subscription} plan)` : ''}.
+          <UsageIntro subscription={usage?.subscription} consoleKey={consoleKey} />
         </p>
         <button className="btn ghost" disabled={loading} onClick={() => void load()}>
           {loading ? 'Checking…' : 'Refresh'}

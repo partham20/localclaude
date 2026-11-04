@@ -1157,3 +1157,12 @@
     width: 150px;
   }
 }
+
+/* which source this chat bills, from Claude Code's own report (only when it isn't the subscription as expected) */
+.billing-tag {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.billing-tag.mismatch {
+  font-weight: 600;
+}

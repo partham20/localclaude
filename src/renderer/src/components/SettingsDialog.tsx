@@ -6,6 +6,8 @@ import { BackupsPanel } from './Backups'
 import { McpManager } from './McpManager'
 import { MemoryList } from './Memory'
 import { ObsidianPanel } from './ObsidianPanel'
+import { billsConsoleKey } from '../../../shared/billing'
+import { ConsoleKeySettings } from './Billing'
 import { ShortcutField, StylesEditor, UsagePanel } from './SettingsExtras'
 
 const TABS: [string, string][] = [
@@ -33,6 +35,7 @@ export function SettingsDialog(props: {
   onImport: () => void
 }) {
   const s = props.settings
+  const consoleKey = billsConsoleKey(props.auth, s)
   const [lock, setLock] = useState<LockStatus | null>(null)
   const [info, setInfo] = useState<Awaited<ReturnType<typeof api.appInfo>> | null>(null)
   const [prompt, setPrompt] = useState(s.appendSystemPrompt)
@@ -220,7 +223,7 @@ export function SettingsDialog(props: {
           {props.tab === 'usage' && (
             <>
               <h2>Usage</h2>
-              <UsagePanel />
+              <UsagePanel consoleKey={consoleKey} />
             </>
           )}
 
@@ -367,13 +370,17 @@ export function SettingsDialog(props: {
                   <span>{props.auth.authMethod ?? '—'}</span>
                 </div>
                 {props.auth.usingApiKeyEnv && (
-                  <p className="notice">API-key or cloud-provider variables (like ANTHROPIC_API_KEY) are set in your environment. LocalClaude ignores them so only your subscription is used.</p>
+                  <p className="notice">
+                    API-key or cloud-provider variables (like ANTHROPIC_API_KEY) are set in your environment. LocalClaude ignores them so{' '}
+                    {consoleKey ? 'only your subscription and LOCALCLAUDE_API_KEY are used.' : 'only your subscription is used.'}
+                  </p>
                 )}
                 <button className="btn danger" onClick={() => void props.onLogout()}>
                   Sign out
                 </button>
                 <p className="muted small">Signing out also signs out Claude Code in your terminal, since they share one login.</p>
               </div>
+              <ConsoleKeySettings auth={props.auth} settings={s} onChange={(p) => void props.onChange(p)} />
               <div className="field">
                 <label>This machine only</label>
                 <p className="muted small">

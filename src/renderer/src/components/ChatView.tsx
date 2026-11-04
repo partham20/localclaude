@@ -12,6 +12,7 @@ import { DesignCanvas, type PendingFrame } from './DesignCanvas'
 import { streamingFields } from '../../../shared/partialJson'
 import { changedFiles, FilesPanel } from './FilesPanel'
 import { FindBar } from './FindBar'
+import { SessionBillingTag } from './Billing'
 import { Icon } from './Icon'
 import { ImagesContext, Lightbox } from './Images'
 import { Menu, type MenuEntry } from './Menu'
@@ -91,6 +92,8 @@ export function ChatView(props: {
   permission: PermissionRequest | null
   settings: AppSettings
   rateLimit: RateLimitInfo | null
+  /** chats and designs are expected to bill LOCALCLAUDE_API_KEY */
+  consoleKey: boolean
   transcript: TranscriptMode
   headerLeft: ReactNode
   artifacts: Artifact[]
@@ -858,6 +861,7 @@ export function ChatView(props: {
                 ]}
               />
               {runtime.init && <McpButton sessionId={meta.id} servers={runtime.mcp} onOpenSettings={() => props.onOpenSettings('tools')} />}
+              <SessionBillingTag apiKeySource={runtime.init?.apiKeySource} expectKey={props.consoleKey} />
               <div className="grow" />
               <span className="disclaimer">{escHint ? 'Press Esc again to rewind' : 'Claude is AI and can make mistakes.'}</span>
               <div className="grow" />
@@ -877,7 +881,8 @@ export function ChatView(props: {
                 footer={
                   rl ? (
                     <span className={rl.status === 'allowed' ? 'muted' : rl.status === 'rejected' ? 'danger-text' : 'warn-text'}>
-                      {cap((rl.rateLimitType ?? 'usage').replace(/_/g, ' '))}
+                      {/* while chats bill the API key, say these are your plan's limits, not API spend */}
+                      {props.consoleKey ? 'Subscription ' + (rl.rateLimitType ?? 'usage').replace(/_/g, ' ') : cap((rl.rateLimitType ?? 'usage').replace(/_/g, ' '))}
                       {rl.utilization !== undefined && `: ${Math.round(rl.utilization * (rl.utilization <= 1 ? 100 : 1))}% used`}
                       {rl.resetsAt && ` · resets ${resetLabel(rl.resetsAt)}`}
                     </span>

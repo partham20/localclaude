@@ -41,7 +41,7 @@ Everything runs and is stored **on this machine only**. Chats, settings and MCP 
 | MCP servers | Add, edit, test and switch off servers in Settings → Tools (or edit them as JSON); your `~/.claude.json` servers load too |
 | Chat history | Searchable sidebar, rename, delete, resume any chat later |
 | Model & effort | Opus / Sonnet / Haiku (or whatever your plan lists), effort level |
-| Usage | Status line shows your plan's 5-hour window usage and reset time; Settings → Usage shows every limit |
+| Usage | Status line shows your plan's 5-hour window usage and reset time; Settings → Usage shows every limit (labelled as subscription usage while chats bill a Console key) |
 | Response styles | Concise, Explanatory, Formal and more, per chat or as the default, plus your own |
 | Notifications & titles | A notification when Claude finishes or needs you while the app is in the background; new chats get a short AI-written title |
 | Quick access | A global shortcut (Ctrl+Alt+Space by default) brings LocalClaude forward with a new chat; the window remembers its size and place; right-click menus for copy, paste, spelling and links |
@@ -94,11 +94,15 @@ Anthropic's built-in computer use in the Claude Code CLI is macOS-only, and **Co
 
 ## How "subscription only" is enforced
 
-LocalClaude removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and the Bedrock/Vertex/Foundry switches from the environment of every Claude Code process it starts. Requests always go through your Claude.ai login. The status line warns if Claude Code ever reports an API-key source.
+LocalClaude removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and the Bedrock/Vertex/Foundry switches from the environment of every Claude Code process it starts. Requests go through your Claude.ai login, with one exception: if you set `LOCALCLAUDE_API_KEY` (below), chats and designs bill that Console key instead.
+
+Each chat's status line shows what Claude Code itself reports it is using (its `apiKeySource`). On the subscription, as expected, it shows nothing. With the Console key it shows "API key". If the report disagrees with what the app expects (an API key when chats should use the subscription, or the subscription when they should use the key), it shows a ⚠ warning there instead.
 
 ### Optional: use a Console API key for chats
 
-Set `LOCALCLAUDE_API_KEY` when you start the app to bill chat and design sessions to that Console key. Titles, usage checks, sign-in and remote control stay on your subscription, so you still need to be signed in, and the usage limits shown in the app don't reflect API spend. `ANTHROPIC_API_KEY` is still ignored.
+Set `LOCALCLAUDE_API_KEY` when you start the app to bill chat and design sessions to that Console key. Titles, usage checks, sign-in and remote control stay on your subscription, so you still need to be signed in. `ANTHROPIC_API_KEY` is still ignored.
+
+While the key is in use, the sidebar shows "API key" instead of your plan, Settings → Account says what uses which, and Settings → Usage labels your plan's limits as subscription usage (API spend isn't shown in the app; check the Console). Settings → Account → "Chats and designs use" switches chats and designs back to your subscription without restarting the app, and back to the key again. The key itself never leaves the main process: the window only learns whether it is set. Without the variable, none of this appears.
 
 ```bash
 LOCALCLAUDE_API_KEY=sk-ant-... npm run dev

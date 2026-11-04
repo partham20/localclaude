@@ -54,6 +54,11 @@ export interface AppSettings {
   notifications: boolean
   /** name new chats with a short AI-written title after the first reply (one small Haiku request) */
   autoTitles: boolean
+  /**
+   * What chats and designs bill when LOCALCLAUDE_API_KEY is set: that Console key, or your
+   * subscription. Ignored (always the subscription) when the variable isn't set.
+   */
+  chatBilling: 'apiKey' | 'subscription'
   /** style for chats that haven't picked one ('' = Claude Code's normal style) */
   defaultStyle: string
   /** your own response styles, alongside the built-in ones */
@@ -228,6 +233,7 @@ export interface InitInfo {
   slashCommands: string[]
   skills: string[]
   mcpServers: { name: string; status: string }[]
+  /** what Claude Code bills ('none' = the claude.ai login); '' while the chat restarts after a billing change */
   apiKeySource: string
   claudeCodeVersion: string
   permissionMode: string
@@ -281,6 +287,8 @@ export interface AuthStatus {
   authMethod?: string
   apiProvider?: string
   usingApiKeyEnv: boolean
+  /** LOCALCLAUDE_API_KEY is set, so chats and designs can bill a Console key. Never the key itself. */
+  usingConsoleKey: boolean
   email?: string
   subscriptionType?: string
   error?: string
@@ -333,6 +341,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   uiFont: 'dm-sans',
   notifications: true,
   autoTitles: true,
+  chatBilling: 'apiKey',
   defaultStyle: '',
   customStyles: [],
   quickShortcut: 'CommandOrControl+Alt+Space',

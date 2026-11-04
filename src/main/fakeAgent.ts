@@ -16,6 +16,7 @@ type Options = {
   mcpServers?: Record<string, { type?: string; instance?: { connect: (t: unknown) => Promise<void> } }>
   canUseTool?: (name: string, input: Record<string, unknown>, o: { signal: AbortSignal; suggestions?: unknown[] }) => Promise<{ behavior: string; message?: string }>
   abortController?: AbortController
+  env?: Record<string, string | undefined>
 }
 
 class Channel<T> {
@@ -293,7 +294,8 @@ export function fakeQuery({ prompt, options = {} }: { prompt: string | AsyncIter
       slash_commands: ['compact', 'context'],
       skills: [],
       mcp_servers: Object.keys(options.mcpServers ?? {}).map((name) => ({ name, status: 'connected' })),
-      apiKeySource: 'none',
+      // like Claude Code: an API key in the environment is billed instead of the login
+      apiKeySource: options.env?.ANTHROPIC_API_KEY ? 'ANTHROPIC_API_KEY' : 'none',
       claude_code_version: 'fake',
       permissionMode: options.permissionMode ?? 'default'
     })

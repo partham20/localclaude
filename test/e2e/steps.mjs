@@ -26,6 +26,30 @@ export const steps = [
     }
   },
   {
+    // Normally run without LOCALCLAUDE_API_KEY (nothing new shows). To check the key's labels:
+    // LOCALCLAUDE_API_KEY=sk-test npm run test:e2e "says what chats bill" (the fake Claude bills nothing)
+    name: 'says what chats bill',
+    run: async (c) => {
+      const key = !!process.env.LOCALCLAUDE_API_KEY
+      await c.waitFor('plan label', `__t.text('.account-plan') === ${JSON.stringify(key ? '· API key' : '· Max')}`)
+      // the chat's own report from Claude Code: nothing for the subscription, "API key" (no warning) for the key
+      await c.waitFor('chat billing', key ? "__t.text('.billing-tag') === 'API key' && !__t.q('.billing-tag.mismatch')" : "!__t.q('.billing-tag')")
+      await c.openSettings('Account')
+      await c.waitFor('account page', "__t.text('.modal').includes('Claude account')")
+      const note = 'Chats and designs use your Console API key. Titles, usage checks, sign-in and remote control use your subscription.'
+      await c.waitFor('console key note', key ? `__t.text('.console-key-note') === ${JSON.stringify(note)}` : "!__t.q('.console-key')")
+      if (key) {
+        await c.shot('console-key-settings')
+        // switch chats to the subscription and back
+        await c.page("(() => { const s = __t.q('.console-key select'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, 'subscription'); s.dispatchEvent(new Event('change', { bubbles: true })); return true })()")
+        await c.waitFor('plan again', "__t.text('.account-plan') === '· Max' && __t.text('.console-key-note').includes('use your subscription')")
+        await c.page("(() => { const s = __t.q('.console-key select'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, 'apiKey'); s.dispatchEvent(new Event('change', { bubbles: true })); return true })()")
+        await c.waitFor('API key again', "__t.text('.account-plan') === '· API key'")
+      }
+      await c.closeModal()
+    }
+  },
+  {
     name: 'chat gets an AI title',
     run: (c) => c.waitFor('AI title', "__t.qa('.session-title').some((e) => e.textContent.startsWith('Chat about hello'))")
   },
