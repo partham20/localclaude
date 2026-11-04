@@ -257,7 +257,9 @@ class AgentSession {
       // A design's frames are written by subagents at the same time. They run in the foreground,
       // so the turn lasts until every frame is done (Claude Code would otherwise end the turn and
       // let them finish in the background).
-      env: design ? { ...agentEnv(), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '8' } : agentEnv(),
+      env: design
+        ? { ...agentEnv(s.chatBilling !== 'subscription'), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '8' }
+        : agentEnv(s.chatBilling !== 'subscription'),
       agents: design ? { 'design-screen': SCREEN_AGENT } : undefined,
       pathToClaudeCodeExecutable: resolveClaudeBinary(),
       settingSources: sources,
@@ -457,6 +459,13 @@ class AgentSession {
   /** Restart so changed settings (MCP servers, Chrome, effort…) apply. */
   restartIfIdle(): void {
     if (this.q && !this.running) this.shutdown()
+  }
+
+  /** Restart now if idle, or when the current turn ends, so a change that must reach every chat (what it bills) applies. */
+  restartSoon(): void {
+    if (!this.q) return
+    if (this.running) this.restartAfterTurn = true
+    else this.shutdown()
   }
 
   /** Change this chat's response style (part of the system prompt, so Claude Code restarts when idle). */
@@ -1139,6 +1148,10 @@ export class SessionManager {
   }
   restartIdle(): void {
     for (const s of this.sessions.values()) s.restartIfIdle()
+  }
+  /** Every chat restarts: idle ones now, busy ones after their turn. */
+  restartAllSoon(): void {
+    for (const s of this.sessions.values()) s.restartSoon()
   }
   shutdownAll(): void {
     for (const s of this.sessions.values()) s.shutdown()

@@ -216,6 +216,8 @@ function registerIpc(): void {
     if (s.obsidianSyncMemory && (!before.obsidianSyncMemory || !before.obsidianEnabled)) vaultSync.memoryChanged()
     // Only settings that change how Claude Code runs need idle chats to restart.
     if (Object.keys(patch).some((k) => !UI_ONLY_SETTINGS.has(k as keyof AppSettings))) manager.restartIdle()
+    // what chats bill (Console key or subscription) must reach busy chats too, after their turn
+    if (s.chatBilling !== before.chatBilling) manager.restartAllSoon()
     return s
   })
   handle('shortcut:status', () => shortcutStatus)

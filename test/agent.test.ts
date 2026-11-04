@@ -39,6 +39,12 @@ import { applyEvent } from '../src/shared/reducer'
 import { COMPUTER_TOOL, stepText, summarize } from '../src/shared/steps'
 import { countChanges, diffStrings, linesFromPatch } from '../src/shared/diff'
 import assert from 'node:assert/strict'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { agentEnv, authStatus, subscriptionEnv } from '../src/main/claude'
+import { CONSOLE_KEY_NOTE, accountLabel, billsConsoleKey, sessionBilling } from '../src/shared/billing'
+import { AccountPlan, ConsoleKeySettings, SessionBillingTag, UsageIntro } from '../src/renderer/src/components/Billing'
+import type { AuthStatus } from '../src/shared/types'
 
 const sessions: SessionMeta[] = []
 const savedImages = new Map<string, Buffer>()
@@ -1026,6 +1032,103 @@ function yourName() {
   console.log('✓ your name: Claude is told what to call you')
 }
 
+/** LOCALCLAUDE_API_KEY: the app says which chats bill it, lets you switch, and never hands the key to the window. */
+async function consoleKeyBilling() {
+  const SECRET = 'sk-ant-api03-TEST-ONLY-not-a-real-key-7f3a'
+  const saved = { key: process.env.LOCALCLAUDE_API_KEY, anth: process.env.ANTHROPIC_API_KEY, fake: process.env.LOCALCLAUDE_FAKE_AGENT }
+  const html = (el: any): string => renderToStaticMarkup(el)
+  try {
+    process.env.LOCALCLAUDE_FAKE_AGENT = '1'
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-from-the-shell'
+    const st: any = memStore()
+    const m = new SessionManager(st, () => {}, { transcriptExists: () => true })
+    const chatEnv = (): Record<string, string | undefined> => (m as any).get(m.create(process.cwd()).id).buildOptions().env
+    const designEnv = (): Record<string, string | undefined> => (m as any).get(m.create(process.cwd(), undefined, { kind: 'slides' }).id).buildOptions().env
+
+    // ---- key not set: nothing new anywhere
+    delete process.env.LOCALCLAUDE_API_KEY
+    const off: AuthStatus = await authStatus()
+    assert.equal(off.usingConsoleKey, false)
+    assert.equal(chatEnv().ANTHROPIC_API_KEY, undefined, 'ANTHROPIC_API_KEY is still ignored')
+    assert.equal(accountLabel(off, billsConsoleKey(off, st._s.settings)), 'Max', 'the plan, exactly as before')
+    assert.equal(html(createElement(AccountPlan, { auth: off, consoleKey: false })), '<span class="account-plan">· Max</span>', 'same markup as before')
+    assert.equal(html(createElement(ConsoleKeySettings, { auth: off, settings: st._s.settings, onChange: () => {} })), '', 'no new Settings text')
+    assert.equal(html(createElement(UsageIntro, { subscription: 'max', consoleKey: false })), 'Your Claude plan’s limits, shared with the Claude app and Claude Code (max plan).')
+    assert.equal(html(createElement(SessionBillingTag, { apiKeySource: 'none', expectKey: false })), '', 'a subscription chat shows nothing new')
+
+    // ---- key set
+    process.env.LOCALCLAUDE_API_KEY = SECRET
+    const on: AuthStatus = await authStatus()
+    assert.equal(on.usingConsoleKey, true)
+    assert.ok(!JSON.stringify(on).includes(SECRET) && !JSON.stringify(on).includes('TEST-ONLY'), 'the key never goes in AuthStatus')
+    const consoleKey = billsConsoleKey(on, st._s.settings)
+    assert.equal(st._s.settings.chatBilling, 'apiKey', 'the key is used by default, as before')
+    assert.equal(consoleKey, true)
+    const sidebar = html(createElement(AccountPlan, { auth: on, consoleKey }))
+    assert.match(sidebar, /· API key</)
+    const settingsHtml = html(createElement(ConsoleKeySettings, { auth: on, settings: st._s.settings, onChange: () => {} }))
+    assert.ok(settingsHtml.includes(CONSOLE_KEY_NOTE.replace(/'/g, '&#x27;')), 'Settings explains what uses which')
+    assert.equal(
+      CONSOLE_KEY_NOTE,
+      'Chats and designs use your Console API key. Titles, usage checks, sign-in and remote control use your subscription.'
+    )
+    assert.match(settingsHtml, /<option value="apiKey" selected="">Console API key/)
+    assert.match(html(createElement(UsageIntro, { subscription: 'max', consoleKey })), /<strong>Subscription usage<\/strong>: your Claude plan’s limits \(max plan\)/)
+    for (const out of [sidebar, settingsHtml, html(createElement(SessionBillingTag, { apiKeySource: 'ANTHROPIC_API_KEY', expectKey: true }))])
+      assert.ok(!out.includes(SECRET), 'the key never reaches the page')
+    // billing: chats and designs bill the key; everything else stays on the subscription
+    assert.equal(chatEnv().ANTHROPIC_API_KEY, SECRET)
+    assert.equal(designEnv().ANTHROPIC_API_KEY, SECRET)
+    assert.equal(subscriptionEnv().ANTHROPIC_API_KEY, undefined)
+    assert.equal(subscriptionEnv().LOCALCLAUDE_API_KEY, undefined)
+    assert.equal(agentEnv().LOCALCLAUDE_API_KEY, undefined)
+
+    // ---- the Settings choice: switch chats and designs to the subscription
+    st._s.settings.chatBilling = 'subscription'
+    assert.equal(chatEnv().ANTHROPIC_API_KEY, undefined, 'chats use the subscription')
+    assert.equal(designEnv().ANTHROPIC_API_KEY, undefined, 'designs too')
+    assert.equal(billsConsoleKey(on, st._s.settings), false)
+    assert.equal(accountLabel(on, false), 'Max', 'the sidebar shows the plan again')
+    assert.match(html(createElement(ConsoleKeySettings, { auth: on, settings: st._s.settings, onChange: () => {} })), /chats and designs use your subscription/)
+    const picked: any[] = []
+    // the choice is only offered when the key is set
+    assert.equal(billsConsoleKey(off, { chatBilling: 'apiKey' }), false)
+    ;(ConsoleKeySettings as any)({ auth: on, settings: st._s.settings, onChange: (p: any) => picked.push(p) }).props.children[1].props.onChange({ target: { value: 'apiKey' } })
+    assert.deepEqual(picked, [{ chatBilling: 'apiKey' }])
+    st._s.settings.chatBilling = 'apiKey'
+    // switching restarts every chat: idle ones now, busy ones after their turn (their process keeps the old env)
+    const idle = (m as any).get(m.create(process.cwd()).id)
+    const busy = (m as any).get(m.create(process.cwd()).id)
+    idle.q = busy.q = {}
+    busy.running = true
+    m.restartAllSoon()
+    assert.equal(idle.q, undefined, 'idle chat stopped; it resumes on the next message with the new env')
+    assert.ok(busy.q && busy.restartAfterTurn, 'busy chat restarts when its turn ends')
+    busy.running = false
+    busy.q = undefined
+
+    // ---- in a chat: Claude Code's own apiKeySource, and a warning when it disagrees
+    assert.deepEqual(sessionBilling(undefined, true), null, 'nothing before the session starts')
+    assert.deepEqual(sessionBilling('', true), null, 'nor while it restarts after the choice changed')
+    assert.equal(sessionBilling('ANTHROPIC_API_KEY', true)?.mismatch, false)
+    assert.equal(html(createElement(SessionBillingTag, { apiKeySource: 'ANTHROPIC_API_KEY', expectKey: true })).includes('API key'), true)
+    const subInstead = html(createElement(SessionBillingTag, { apiKeySource: 'none', expectKey: true }))
+    assert.match(subInstead, /class="billing-tag mismatch warn-text"/)
+    assert.match(subInstead, /role="alert"/)
+    assert.match(subInstead, /⚠ Subscription, not API key/)
+    const keyInstead = html(createElement(SessionBillingTag, { apiKeySource: 'ANTHROPIC_API_KEY', expectKey: false }))
+    assert.match(keyInstead, /⚠ API key, not subscription/)
+    assert.equal(sessionBilling('oauth', false)?.mismatch, false)
+    assert.equal(sessionBilling('apiKeyHelper', false)?.mismatch, true)
+    m.shutdownAll()
+  } finally {
+    for (const [k, v] of [['LOCALCLAUDE_API_KEY', saved.key], ['ANTHROPIC_API_KEY', saved.anth], ['LOCALCLAUDE_FAKE_AGENT', saved.fake]] as const)
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+  }
+  console.log('✓ console key: sidebar label, Settings note and choice, subscription usage, chat source and mismatch warning, key never shown')
+}
+
 function designMode() {
   const st: any = memStore()
   st._s.settings.artifacts = false
@@ -1200,6 +1303,8 @@ async function realSpawn() {
 }
 
 await synthetic()
+// before the rest: a failure further down (e.g. designMode) stops the suite, and this must still run
+await consoleKeyBilling()
 await checkpointsAndRewind()
 await slashCommandOutput()
 await computerUseOption()

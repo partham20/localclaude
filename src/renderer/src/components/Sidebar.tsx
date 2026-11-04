@@ -3,6 +3,7 @@ import type { AuthStatus, ChatSearchHit, Project, SessionMeta } from '../../../s
 import { api } from '../api'
 import type { SessionRuntime } from '../App'
 import { droppedChats, isChatDrag, startChatDrag } from '../dnd'
+import { AccountPlan } from './Billing'
 import { Icon } from './Icon'
 import { Menu, type MenuEntry } from './Menu'
 
@@ -20,7 +21,6 @@ function groupLabel(ts: number): string {
   return d.toLocaleString(undefined, { month: 'long', year: 'numeric' })
 }
 
-const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 const folderName = (p: string): string => p.split(/[\\/]/).filter(Boolean).pop() ?? p
 
 /** Sidebar width: drag its edge between these; double-click the edge for the default. */
@@ -122,6 +122,8 @@ export function Sidebar(props: {
   runtime: Record<string, SessionRuntime>
   pending: Record<string, number>
   auth: AuthStatus
+  /** chats and designs bill LOCALCLAUDE_API_KEY (shows "API key" instead of the plan) */
+  consoleKey: boolean
   canBack: boolean
   canForward: boolean
   onBack: () => void
@@ -304,7 +306,6 @@ export function Sidebar(props: {
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
   }
-  const plan = props.auth.subscriptionType ? cap(props.auth.subscriptionType) : ''
   const projectName = (id?: string): string | undefined => (id ? props.projects.find((p) => p.id === id)?.name : undefined)
 
   const chatItem = (s: SessionMeta) => {
@@ -624,7 +625,7 @@ export function Sidebar(props: {
                 {name.slice(0, 1).toUpperCase()}
               </span>
               <span className="account-name">{name}</span>
-              {plan && <span className="account-plan">· {plan}</span>}
+              <AccountPlan auth={props.auth} consoleKey={props.consoleKey} />
               <Icon name="chevronDown" size={14} className="account-chev" />
             </>
           }
