@@ -37,7 +37,7 @@ export const steps = [
       await c.openSettings('Account')
       await c.waitFor('account page', "__t.text('.modal').includes('Claude account')")
       const note = 'Chats and designs use your Console API key. Titles, usage checks, sign-in and remote control use your subscription.'
-      await c.waitFor('console key note', key ? `__t.text('.console-key-note') === ${JSON.stringify(note)}` : "!__t.q('.console-key')")
+      await c.waitFor('console key note', key ? `__t.text('.console-key-note') === ${JSON.stringify(note)}` : "!!__t.q('.console-key-input') && !__t.q('.console-key select') && !__t.q('.console-key-note')")
       if (key) {
         await c.shot('console-key-settings')
         // switch chats to the subscription and back
@@ -47,6 +47,35 @@ export const steps = [
         await c.waitFor('API key again', "__t.text('.account-plan') === '· API key'")
       }
       await c.closeModal()
+    }
+  },
+  {
+    name: 'add and remove a Console API key in Settings',
+    run: async (c) => {
+      if (process.env.LOCALCLAUDE_API_KEY) return // the variable wins; this step is for the key typed into Settings
+      const KEY = 'sk-ant-api03-e2e-only-not-a-real-key-000000000000'
+      await c.openSettings('Account')
+      await c.waitFor('key field', "!!__t.q('.console-key-input')")
+      await c.page(`__t.setValue(__t.q('.console-key-input'), ${JSON.stringify('  ' + KEY + ' ')})`)
+      await c.page("__t.q('.console-key form').requestSubmit(); true")
+      await c.waitFor('key saved', "__t.text('.account-plan') === '· API key' && !!__t.q('.console-key select') && __t.text('.console-key-status').includes('saved')")
+      await c.waitFor('note', "__t.text('.console-key-note').startsWith('Chats and designs use your Console API key.')")
+      if (await c.page(`document.body.innerHTML.includes(${JSON.stringify(KEY)})`)) throw new Error('the key is in the page')
+      // stored encrypted: the vault file doesn't hold it as text
+      const vault = c.read(join(c.work, 'profile', 'vault', 'vault.bin'))
+      if (vault.includes(Buffer.from(KEY)) || vault.includes(Buffer.from('e2e-only'))) throw new Error('the key is saved in plain text')
+      await c.shot('console-key-saved')
+      await c.closeModal()
+      // the next message restarts the chat with the key: Claude Code reports it, no warning
+      await c.send('hello with a key', 'Echo: hello with a key')
+      await c.waitFor('chat bills the key', "__t.text('.billing-tag') === 'API key' && !__t.q('.billing-tag.mismatch')")
+      // remove it: back to the plan and the subscription
+      await c.openSettings('Account')
+      await c.page("__t.click(__t.q('.console-key-remove'))")
+      await c.waitFor('key removed', "__t.text('.account-plan') === '· Max' && !!__t.q('.console-key-input') && !__t.q('.console-key select')")
+      await c.closeModal()
+      await c.send('hello again', 'Echo: hello again')
+      await c.waitFor('chat on the subscription', "!__t.q('.billing-tag')")
     }
   },
   {

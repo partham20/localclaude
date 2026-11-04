@@ -25,6 +25,8 @@ interface Vault {
   backup?: BackupState
   /** chats kept as notes in the Obsidian vault: chat id -> note path inside the vault */
   notes?: Record<string, string>
+  /** Console API key saved in Settings (never sent to the window, never in exports or backups) */
+  consoleApiKey?: string
 }
 
 export interface BackupState {
@@ -249,6 +251,16 @@ export class SecureStore {
     if (rel) notes[sessionId] = rel
     else delete notes[sessionId]
     this.vault.notes = notes
+    this.saveVault()
+  }
+
+  // ---------- Console API key ----------
+  getConsoleKey(): string | undefined {
+    return this.vault?.consoleApiKey
+  }
+  setConsoleKey(key: string | undefined): void {
+    if (key) this.vault.consoleApiKey = key
+    else delete this.vault.consoleApiKey
     this.saveVault()
   }
 

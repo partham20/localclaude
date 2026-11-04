@@ -94,19 +94,23 @@ Anthropic's built-in computer use in the Claude Code CLI is macOS-only, and **Co
 
 ## How "subscription only" is enforced
 
-LocalClaude removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and the Bedrock/Vertex/Foundry switches from the environment of every Claude Code process it starts. Requests go through your Claude.ai login, with one exception: if you set `LOCALCLAUDE_API_KEY` (below), chats and designs bill that Console key instead.
+LocalClaude removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and the Bedrock/Vertex/Foundry switches from the environment of every Claude Code process it starts. Requests go through your Claude.ai login, with one exception: if you add a Console API key (below), chats and designs bill that key instead.
 
 Each chat's status line shows what Claude Code itself reports it is using (its `apiKeySource`). On the subscription, as expected, it shows nothing. With the Console key it shows "API key". If the report disagrees with what the app expects (an API key when chats should use the subscription, or the subscription when they should use the key), it shows a ⚠ warning there instead.
 
 ### Optional: use a Console API key for chats
 
-Set `LOCALCLAUDE_API_KEY` when you start the app to bill chat and design sessions to that Console key. Titles, usage checks, sign-in and remote control stay on your subscription, so you still need to be signed in. `ANTHROPIC_API_KEY` is still ignored.
+Add a Console API key in **Settings → Account & privacy → Console API key** to bill chat and design sessions to it. Titles, usage checks, sign-in and remote control stay on your subscription, so you still need to be signed in. `ANTHROPIC_API_KEY` is still ignored.
 
-While the key is in use, the sidebar shows "API key" instead of your plan, Settings → Account says what uses which, and Settings → Usage labels your plan's limits as subscription usage (API spend isn't shown in the app; check the Console). Settings → Account → "Chats and designs use" switches chats and designs back to your subscription without restarting the app, and back to the key again. The key itself never leaves the main process: the window only learns whether it is set. Without the variable, none of this appears.
+The app checks the key with Anthropic before saving it (listing models, which costs nothing; a rejected key isn't saved, and if Anthropic can't be reached it's saved anyway). It's kept in the same encrypted, machine-bound store as your chats, is never sent back to the window or written to the log, and isn't included in exports or backups. **Remove saved key** deletes it.
+
+You can also set `LOCALCLAUDE_API_KEY` when you start the app. It wins over a saved key while it's set:
 
 ```bash
 LOCALCLAUDE_API_KEY=sk-ant-... npm run dev
 ```
+
+While a key is in use, the sidebar shows "API key" instead of your plan, Settings → Account says what uses which, and Settings → Usage labels your plan's limits as subscription usage (API spend isn't shown in the app; check the Console). Settings → Account → "Chats and designs use" switches chats and designs back to your subscription without removing the key, and back again. Chats restart on the new source: idle ones straight away, busy ones when their turn ends. Without a key, only the field to add one appears.
 
 Never commit the key. Check the Console after a small test message to confirm which balance was charged.
 

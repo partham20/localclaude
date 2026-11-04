@@ -41,7 +41,7 @@ import { countChanges, diffStrings, linesFromPatch } from '../src/shared/diff'
 import assert from 'node:assert/strict'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { agentEnv, authStatus, subscriptionEnv } from '../src/main/claude'
+import { agentEnv, authStatus, checkConsoleKey, cleanConsoleKey, setSavedConsoleKey, subscriptionEnv } from '../src/main/claude'
 import { CONSOLE_KEY_NOTE, accountLabel, billsConsoleKey, sessionBilling } from '../src/shared/billing'
 import { AccountPlan, ConsoleKeySettings, SessionBillingTag, UsageIntro } from '../src/renderer/src/components/Billing'
 import type { AuthStatus } from '../src/shared/types'
@@ -1037,6 +1037,7 @@ async function consoleKeyBilling() {
   const SECRET = 'sk-ant-api03-TEST-ONLY-not-a-real-key-7f3a'
   const saved = { key: process.env.LOCALCLAUDE_API_KEY, anth: process.env.ANTHROPIC_API_KEY, fake: process.env.LOCALCLAUDE_FAKE_AGENT }
   const html = (el: any): string => renderToStaticMarkup(el)
+  const keyProps = { onChange: () => {}, onSaveKey: async () => ({ ok: true }), onRemoveKey: async () => {} }
   try {
     process.env.LOCALCLAUDE_FAKE_AGENT = '1'
     process.env.ANTHROPIC_API_KEY = 'sk-ant-from-the-shell'
@@ -1052,7 +1053,9 @@ async function consoleKeyBilling() {
     assert.equal(chatEnv().ANTHROPIC_API_KEY, undefined, 'ANTHROPIC_API_KEY is still ignored')
     assert.equal(accountLabel(off, billsConsoleKey(off, st._s.settings)), 'Max', 'the plan, exactly as before')
     assert.equal(html(createElement(AccountPlan, { auth: off, consoleKey: false })), '<span class="account-plan">· Max</span>', 'same markup as before')
-    assert.equal(html(createElement(ConsoleKeySettings, { auth: off, settings: st._s.settings, onChange: () => {} })), '', 'no new Settings text')
+    const addKey = html(createElement(ConsoleKeySettings, { ...keyProps, auth: off, settings: st._s.settings }))
+    assert.match(addKey, /type="password"/, 'a key can be added in Settings, typed into a hidden field')
+    assert.ok(!addKey.includes('<select') && !addKey.includes('console-key-note'), 'no billing choice or note until there is a key')
     assert.equal(html(createElement(UsageIntro, { subscription: 'max', consoleKey: false })), 'Your Claude plan’s limits, shared with the Claude app and Claude Code (max plan).')
     assert.equal(html(createElement(SessionBillingTag, { apiKeySource: 'none', expectKey: false })), '', 'a subscription chat shows nothing new')
 
@@ -1066,7 +1069,7 @@ async function consoleKeyBilling() {
     assert.equal(consoleKey, true)
     const sidebar = html(createElement(AccountPlan, { auth: on, consoleKey }))
     assert.match(sidebar, /· API key</)
-    const settingsHtml = html(createElement(ConsoleKeySettings, { auth: on, settings: st._s.settings, onChange: () => {} }))
+    const settingsHtml = html(createElement(ConsoleKeySettings, { ...keyProps, auth: on, settings: st._s.settings }))
     assert.ok(settingsHtml.includes(CONSOLE_KEY_NOTE.replace(/'/g, '&#x27;')), 'Settings explains what uses which')
     assert.equal(
       CONSOLE_KEY_NOTE,
@@ -1089,12 +1092,9 @@ async function consoleKeyBilling() {
     assert.equal(designEnv().ANTHROPIC_API_KEY, undefined, 'designs too')
     assert.equal(billsConsoleKey(on, st._s.settings), false)
     assert.equal(accountLabel(on, false), 'Max', 'the sidebar shows the plan again')
-    assert.match(html(createElement(ConsoleKeySettings, { auth: on, settings: st._s.settings, onChange: () => {} })), /chats and designs use your subscription/)
-    const picked: any[] = []
+    assert.match(html(createElement(ConsoleKeySettings, { ...keyProps, auth: on, settings: st._s.settings })), /chats and designs use your subscription/)
     // the choice is only offered when the key is set
     assert.equal(billsConsoleKey(off, { chatBilling: 'apiKey' }), false)
-    ;(ConsoleKeySettings as any)({ auth: on, settings: st._s.settings, onChange: (p: any) => picked.push(p) }).props.children[1].props.onChange({ target: { value: 'apiKey' } })
-    assert.deepEqual(picked, [{ chatBilling: 'apiKey' }])
     st._s.settings.chatBilling = 'apiKey'
     // switching restarts every chat: idle ones now, busy ones after their turn (their process keeps the old env)
     const idle = (m as any).get(m.create(process.cwd()).id)
@@ -1120,13 +1120,67 @@ async function consoleKeyBilling() {
     assert.match(keyInstead, /⚠ API key, not subscription/)
     assert.equal(sessionBilling('oauth', false)?.mismatch, false)
     assert.equal(sessionBilling('apiKeyHelper', false)?.mismatch, true)
+
+    // ---- a key saved in Settings (no environment variable)
+    const SAVED = 'sk-ant-api03-SAVED-test-only-key-0000000000'
+    delete process.env.LOCALCLAUDE_API_KEY
+    setSavedConsoleKey(SAVED)
+    const saved1: AuthStatus = await authStatus()
+    assert.equal(saved1.usingConsoleKey, true)
+    assert.equal(saved1.consoleKeySource, 'saved')
+    assert.equal(saved1.consoleKeySaved, true)
+    assert.ok(!JSON.stringify(saved1).includes('SAVED-test-only'), 'a saved key never goes in AuthStatus either')
+    assert.equal(chatEnv().ANTHROPIC_API_KEY, SAVED, 'chats bill the saved key')
+    assert.equal(designEnv().ANTHROPIC_API_KEY, SAVED)
+    assert.equal(subscriptionEnv().ANTHROPIC_API_KEY, undefined, 'titles, usage, sign-in and remote control never do')
+    const savedHtml = html(createElement(ConsoleKeySettings, { ...keyProps, auth: saved1, settings: st._s.settings }))
+    assert.match(savedHtml, /A key is saved, encrypted on this machine/)
+    assert.match(savedHtml, /Remove saved key/)
+    assert.match(savedHtml, /<select/, 'the billing choice shows once a key is saved')
+    assert.ok(!savedHtml.includes('SAVED-test-only') && !savedHtml.includes('type="password"'), 'the saved key is never shown, and no field to type one')
+    // LOCALCLAUDE_API_KEY wins over a saved key
+    process.env.LOCALCLAUDE_API_KEY = SECRET
+    const both: AuthStatus = await authStatus()
+    assert.equal(both.consoleKeySource, 'env')
+    assert.equal(chatEnv().ANTHROPIC_API_KEY, SECRET)
+    assert.match(html(createElement(ConsoleKeySettings, { ...keyProps, auth: both, settings: st._s.settings })), /used instead of the key saved here/)
+    // removing it
+    delete process.env.LOCALCLAUDE_API_KEY
+    setSavedConsoleKey(undefined)
+    const gone: AuthStatus = await authStatus()
+    assert.equal(gone.usingConsoleKey, false)
+    assert.equal(gone.consoleKeySaved, false)
+    assert.equal(chatEnv().ANTHROPIC_API_KEY, undefined, 'back on the subscription')
+
+    // ---- checking a pasted key before it's saved
+    assert.deepEqual(cleanConsoleKey('  ' + SAVED + '\n'), { key: SAVED }, 'spaces and newlines from pasting are trimmed')
+    assert.ok('error' in cleanConsoleKey(''))
+    assert.ok('error' in cleanConsoleKey('hello'))
+    assert.ok('error' in cleanConsoleKey('sk-ant-short'))
+    const calls: any[] = []
+    const fakeFetch = (status: number | 'offline') =>
+      (async (url: string, init: any) => {
+        calls.push({ url, key: init.headers['x-api-key'] })
+        if (status === 'offline') throw new Error('offline')
+        return { ok: status < 300, status }
+      }) as any
+    assert.deepEqual(await checkConsoleKey(SAVED, fakeFetch(200)), { ok: true })
+    assert.equal(calls[0].url, 'https://api.anthropic.com/v1/models?limit=1', 'listing models: free, bills nothing')
+    assert.equal(calls[0].key, SAVED)
+    assert.equal((await checkConsoleKey(SAVED, fakeFetch(401))).ok, false, 'a rejected key is not saved')
+    assert.equal((await checkConsoleKey(SAVED, fakeFetch(403))).ok, false)
+    const offline = await checkConsoleKey(SAVED, fakeFetch('offline'))
+    assert.ok(offline.ok && offline.warning, 'offline: saved anyway, with a warning')
+    const err = await checkConsoleKey(SAVED, fakeFetch(500))
+    assert.ok(err.ok && err.warning)
     m.shutdownAll()
   } finally {
+    setSavedConsoleKey(undefined)
     for (const [k, v] of [['LOCALCLAUDE_API_KEY', saved.key], ['ANTHROPIC_API_KEY', saved.anth], ['LOCALCLAUDE_FAKE_AGENT', saved.fake]] as const)
       if (v === undefined) delete process.env[k]
       else process.env[k] = v
   }
-  console.log('✓ console key: sidebar label, Settings note and choice, subscription usage, chat source and mismatch warning, key never shown')
+  console.log('✓ console key: sidebar label, Settings note and choice, saving and removing a key in Settings, subscription usage, chat source and mismatch warning, key never shown')
 }
 
 function designMode() {

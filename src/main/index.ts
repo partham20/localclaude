@@ -33,7 +33,7 @@ import { renderArtifactPage } from './artifacts'
 import { DRAFT_PAGE, withDesignBridge } from './design'
 import { exportDesign, exportFramesPdf } from './designExport'
 import { BACKUP_EXT, MIN_PASSWORD, backupDue, backupFileName, createBackup, decryptBackup, isEncryptedBackup, writeBackupTo } from './backup'
-import { authStatus, cancelLogin, logout, resolveClaudeBinary, sendLoginInput, startLogin, subscriptionEnv } from './claude'
+import { authStatus, cancelLogin, checkConsoleKey, cleanConsoleKey, logout, resolveClaudeBinary, sendLoginInput, setSavedConsoleKey, startLogin, subscriptionEnv } from './claude'
 import { stopComputerHelper } from './computer'
 import { attachContextMenu } from './contextMenu'
 import { createWorktree, gitStatus } from './git'
@@ -174,6 +174,7 @@ function registerIpc(): void {
     'app:resetData',
     () => {
       manager?.shutdownAll()
+      setSavedConsoleKey(undefined)
       return store.reset()
     },
     true
@@ -196,6 +197,25 @@ function registerIpc(): void {
 
   // ---- auth (your Claude subscription, via Claude Code's own login)
   handle('auth:status', () => authStatus())
+  // A Console API key typed into Settings: checked, kept in the encrypted vault, never sent back.
+  handle('consoleKey:save', async (raw: string) => {
+    const c = cleanConsoleKey(raw)
+    if ('error' in c) return { ok: false, error: c.error }
+    const check = process.env.LOCALCLAUDE_FAKE_AGENT ? { ok: true as const } : await checkConsoleKey(c.key)
+    if (!check.ok) return check
+    store.setConsoleKey(c.key)
+    setSavedConsoleKey(c.key)
+    manager.restartAllSoon()
+    log('info', 'Console API key saved in Settings')
+    return { ok: true, warning: 'warning' in check ? check.warning : undefined }
+  })
+  handle('consoleKey:remove', () => {
+    store.setConsoleKey(undefined)
+    setSavedConsoleKey(undefined)
+    manager.restartAllSoon()
+    log('info', 'Console API key removed from Settings')
+    return { ok: true }
+  })
   handle('auth:login', () => win && startLogin(win))
   handle('auth:loginInput', (text: string) => sendLoginInput(text))
   handle('auth:cancelLogin', () => cancelLogin())
@@ -826,6 +846,7 @@ app.whenReady().then(() => {
   log('info', `LocalClaude ${app.getVersion()} starting (Electron ${process.versions.electron}, ${process.platform} ${process.arch})`)
   store.open()
   if (!store.lock.ok) log('warn', 'data locked:', store.lock.reason ?? '')
+  else setSavedConsoleKey(store.getConsoleKey())
   if (store.lock.ok) nativeTheme.themeSource = store.getSettings().theme
   manager = new SessionManager(
     store,

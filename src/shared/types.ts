@@ -55,8 +55,8 @@ export interface AppSettings {
   /** name new chats with a short AI-written title after the first reply (one small Haiku request) */
   autoTitles: boolean
   /**
-   * What chats and designs bill when LOCALCLAUDE_API_KEY is set: that Console key, or your
-   * subscription. Ignored (always the subscription) when the variable isn't set.
+   * What chats and designs bill when there's a Console key (LOCALCLAUDE_API_KEY, or saved in
+   * Settings): that key, or your subscription. Ignored (always the subscription) without a key.
    */
   chatBilling: 'apiKey' | 'subscription'
   /** style for chats that haven't picked one ('' = Claude Code's normal style) */
@@ -287,8 +287,12 @@ export interface AuthStatus {
   authMethod?: string
   apiProvider?: string
   usingApiKeyEnv: boolean
-  /** LOCALCLAUDE_API_KEY is set, so chats and designs can bill a Console key. Never the key itself. */
+  /** There's a Console key (LOCALCLAUDE_API_KEY, or one saved in Settings), so chats and designs can bill it. Never the key itself. */
   usingConsoleKey: boolean
+  /** where the key in use comes from: the environment variable wins over a saved one */
+  consoleKeySource?: 'env' | 'saved'
+  /** a key is saved in Settings (it may be unused while LOCALCLAUDE_API_KEY is set) */
+  consoleKeySaved?: boolean
   email?: string
   subscriptionType?: string
   error?: string

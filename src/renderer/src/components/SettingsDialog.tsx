@@ -29,6 +29,8 @@ export function SettingsDialog(props: {
   onChange: (p: Partial<AppSettings>) => Promise<void>
   onClose: () => void
   onLogout: () => Promise<void>
+  /** the Console key was saved or removed: read the sign-in status again */
+  onAuthChanged: () => Promise<void>
   globalMemory: MemoryItem[]
   onGlobalMemory: (items: MemoryItem[]) => void
   onExportAll: () => void
@@ -380,7 +382,20 @@ export function SettingsDialog(props: {
                 </button>
                 <p className="muted small">Signing out also signs out Claude Code in your terminal, since they share one login.</p>
               </div>
-              <ConsoleKeySettings auth={props.auth} settings={s} onChange={(p) => void props.onChange(p)} />
+              <ConsoleKeySettings
+                auth={props.auth}
+                settings={s}
+                onChange={(p) => void props.onChange(p)}
+                onSaveKey={async (key) => {
+                  const r = await api.saveConsoleKey(key)
+                  if (r.ok) await props.onAuthChanged()
+                  return r
+                }}
+                onRemoveKey={async () => {
+                  await api.removeConsoleKey()
+                  await props.onAuthChanged()
+                }}
+              />
               <div className="field">
                 <label>This machine only</label>
                 <p className="muted small">
