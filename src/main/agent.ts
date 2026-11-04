@@ -26,7 +26,7 @@ import type {
   SendPayload,
   SessionMeta
 } from '../shared/types'
-import { resolveClaudeBinary, subscriptionEnv } from './claude'
+import { agentEnv, resolveClaudeBinary } from './claude'
 import { ARTIFACT_TOOLS, createArtifactServer } from './artifacts'
 import { CHAT_TOOLS, ChatIndex, createChatsServer } from './chatSearch'
 import { createComputerServer } from './computer'
@@ -257,7 +257,7 @@ class AgentSession {
       // A design's frames are written by subagents at the same time. They run in the foreground,
       // so the turn lasts until every frame is done (Claude Code would otherwise end the turn and
       // let them finish in the background).
-      env: design ? { ...subscriptionEnv(), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '8' } : subscriptionEnv(),
+      env: design ? { ...agentEnv(), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '8' } : agentEnv(),
       agents: design ? { 'design-screen': SCREEN_AGENT } : undefined,
       pathToClaudeCodeExecutable: resolveClaudeBinary(),
       settingSources: sources,

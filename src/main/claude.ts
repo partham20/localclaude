@@ -52,8 +52,22 @@ export function hadApiKeyInEnv(): boolean {
 export function subscriptionEnv(): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = { ...process.env }
   for (const k of STRIP) delete env[k]
+  delete env.LOCALCLAUDE_API_KEY
   env.CLAUDE_AGENT_SDK_CLIENT_APP = 'localclaude/1.0.0'
   delete env.ELECTRON_RUN_AS_NODE
+  return env
+}
+
+/**
+ * Environment for chat and design sessions only. Uses the subscription unless
+ * LOCALCLAUDE_API_KEY is set, in which case those sessions bill that Console key.
+ * Titles, usage checks, sign-in and remote control stay on subscriptionEnv().
+ */
+export function agentEnv(): Record<string, string | undefined> {
+  const env = subscriptionEnv()
+  const key = process.env.LOCALCLAUDE_API_KEY
+  if (key) env.ANTHROPIC_API_KEY = key
+  delete env.LOCALCLAUDE_API_KEY
   return env
 }
 
