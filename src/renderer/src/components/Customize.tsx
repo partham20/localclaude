@@ -1,5 +1,5 @@
 // Settings → Appearance, Keyboard and Mods: change how LocalClaude looks and works.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ACCENT_SWATCHES,
   COLOR_TOKENS,
@@ -117,7 +117,27 @@ export function AppearancePanel({ settings, onChange }: { settings: AppSettings;
   const a = normalizeAppearance(settings.appearance)
   const mods = useModHost()
   const themes = allThemes(mods.themes)
-  const set = (patch: Partial<Appearance>): void => void onChange({ appearance: { ...a, ...patch } })
+  // A change is built on the one before it, also while that one is still being saved or the saved
+  // settings haven't reached this panel yet: two quick changes (Compact, then Round) used to both
+  // start from this render's settings, so the first was lost.
+  const pending = useRef<Appearance | null>(null)
+  const saving = useRef(0)
+  const set = (patch: Partial<Appearance>): void => {
+    const next = { ...(pending.current ?? a), ...patch }
+    pending.current = next
+    saving.current++
+    void Promise.resolve(onChange({ appearance: next }))
+      .catch(() => {
+        pending.current = null
+      })
+      .finally(() => {
+        saving.current--
+      })
+  }
+  // the saved settings are here: later changes can start from them again
+  useEffect(() => {
+    if (!saving.current) pending.current = null
+  }, [settings.appearance])
   const dark = document.documentElement.dataset.theme === 'dark'
   const [css, setCss] = useState(a.customCss)
   useEffect(() => setCss(a.customCss), [a.customCss])
