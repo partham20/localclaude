@@ -65,21 +65,80 @@ npm run dev
 
 On first launch, click **Sign in with Claude**. A browser opens to the Claude sign-in page; approve it (if the page shows a code, paste it into the app). If you already use `claude` in a terminal, you're already signed in; the login is shared.
 
+## Sign in with a subscription token instead
+
+If you'd rather not sign in through the browser on a machine (or it can't open one), you can give LocalClaude a long-lived token for your Claude Pro or Max subscription. LocalClaude passes `CLAUDE_CODE_OAUTH_TOKEN` through to every Claude Code process it starts, so when it's set the app skips the sign-in screen and uses your subscription, the same as a normal sign-in.
+
+**1. Get a token.** On any machine where Claude Code is installed and you're logged in, run:
+
+```bash
+claude setup-token
+```
+
+It opens the browser once to confirm, then prints a token that starts with `sk-ant-oat01-`. Copy it. It's a password for your subscription: don't share it, commit it, or paste it into chats.
+
+**2. Set it on the machine that runs LocalClaude.**
+
+**Windows** (Command Prompt or PowerShell):
+
+```bat
+setx CLAUDE_CODE_OAUTH_TOKEN "sk-ant-oat01-..."
+```
+
+Then quit LocalClaude completely and start it again. `setx` only affects programs started after it runs, so an open LocalClaude (or the terminal you ran it in) won't see the token until it's restarted. To remove it later: `reg delete HKCU\Environment /v CLAUDE_CODE_OAUTH_TOKEN /f`, then restart the app.
+
+**Linux:** add this line to `~/.bashrc` (or `~/.zshrc` if you use zsh):
+
+```bash
+export CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat01-..."
+```
+
+Then run `source ~/.bashrc` (or open a new terminal) and start LocalClaude from that terminal. Apps started from your desktop's menu or dock don't read `~/.bashrc`; to use one of those, put the same line in `~/.profile` too and log out and back in. To remove the token, delete the line(s) and do the same.
+
+**macOS:** same as Linux, using `~/.zshrc` (the default shell).
+
+**How you'll know it worked:** the app opens straight to a new chat, and **Settings → Account & privacy** shows *Sign-in: Subscription token (CLAUDE_CODE_OAUTH_TOKEN)*. The sidebar and Settings have no **Sign out** while the token is set, because signing out can't remove an environment variable; remove the variable and restart instead.
+
+**Good to know:**
+
+- The token is for **your own personal use** with your own subscription. Don't give it to other people or build it into a copy you share.
+- One token can work on several of your own devices. Creating **one token per device** is better, though: if a laptop is lost or you stop using it, you can revoke just that one (in your Claude account settings) without signing out everywhere else.
+- Usage counts against your plan's limits exactly like a normal sign-in. A Console API key you've added in Settings still takes over chats and designs if you chose that, as described below.
+
+## Portable versions (no install)
+
+Each release also has builds you can run without installing anything:
+
+| File | How to run it |
+|---|---|
+| `LocalClaude-<version>-win-x64-portable.zip` | Windows 10/11 x64. Right-click → **Extract All**, open the folder, run `LocalClaude.exe`. Keep the whole folder together; move it anywhere, including a USB drive |
+| `LocalClaude-<version>-linux-x64-portable.tar.gz` | Any x64 Linux desktop (glibc). `tar xzf LocalClaude-*-linux-x64-portable.tar.gz`, then run `./localclaude` inside the folder. Needs no FUSE, unlike the AppImage |
+| `LocalClaude-<version>.AppImage` | Also portable: `chmod +x` it and run it. Needs `libfuse2` (`sudo apt install libfuse2t64` on Ubuntu 24.04) |
+
+Notes:
+
+- **Your chats aren't in the portable folder.** They're kept in the normal app-data folder (`%APPDATA%\LocalClaude` on Windows, `~/.config/LocalClaude` on Linux), shared with the installed version, and encrypted to this computer. Copying the portable folder to another PC gives you the app, not your chats; use a backup or export to move those.
+- **Windows SmartScreen** may warn because the builds aren't code-signed: choose **More info → Run anyway**.
+- **Linux, if the tar.gz or AppImage closes straight away with a message about `chrome-sandbox`** (common on Ubuntu 24.04 and later, which restricts the sandbox Chromium uses), run this once in the extracted folder: `sudo chown root:root chrome-sandbox && sudo chmod 4755 chrome-sandbox`.
+- Sign in as usual, or set a [subscription token](#sign-in-with-a-subscription-token-instead) first.
+
+To build them yourself (on the OS you're targeting): `npm run dist:portable:win` or `npm run dist:portable:linux`. They land in `release/`.
+
 ## Build an installer
 
 Build on the OS you're targeting:
 
 ```bash
-# Windows → release/LocalClaude-Setup-1.0.0.exe
+# Windows → release/LocalClaude-Setup-<version>.exe and the portable .zip
 npm run dist:win
 
-# Linux → release/LocalClaude-1.0.0.AppImage and .deb
+# Linux → release/LocalClaude-<version>.AppImage, the .deb and the portable .tar.gz
 npm run dist:linux
 ```
 
 The installer is about 250 MB because it carries the native Claude Code binary.
 
-Pushing a version tag (`git tag v1.2.3 && git push origin v1.2.3`) builds both on GitHub and puts them, with the source code, in a draft release for that tag.
+Pushing a version tag (`git tag v1.2.3 && git push origin v1.2.3`) builds all of them, portable versions included, on GitHub and puts them, with the source code, in a draft release for that tag. Pull requests that change the packaging also build the portable versions; download them from the run's **Artifacts** on the Actions tab.
 
 ## Computer use
 
@@ -94,7 +153,7 @@ Anthropic's built-in computer use in the Claude Code CLI is macOS-only, and **Co
 
 ## How "subscription only" is enforced
 
-LocalClaude removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and the Bedrock/Vertex/Foundry switches from the environment of every Claude Code process it starts. Requests go through your Claude.ai login, with one exception: if you add a Console API key (below), chats and designs bill that key instead.
+LocalClaude removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` and the Bedrock/Vertex/Foundry switches from the environment of every Claude Code process it starts. It keeps `CLAUDE_CODE_OAUTH_TOKEN`, since that's a subscription token ([above](#sign-in-with-a-subscription-token-instead)). Requests go through your Claude.ai login or that token, with one exception: if you add a Console API key (below), chats and designs bill that key instead.
 
 Each chat's status line shows what Claude Code itself reports it is using (its `apiKeySource`). On the subscription, as expected, it shows nothing. With the Console key it shows "API key". If the report disagrees with what the app expects (an API key when chats should use the subscription, or the subscription when they should use the key), it shows a ⚠ warning there instead.
 

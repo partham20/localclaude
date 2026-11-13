@@ -1,6 +1,6 @@
 name: Release
 
-# Pushing a version tag (v1.2.3) builds the Windows installer and the Linux AppImage and .deb on
+# Pushing a version tag (v1.2.3) builds the Windows installer and portable zip, and the Linux AppImage, .deb and portable tar.gz on
 # GitHub, and puts them in a draft release for that tag. GitHub adds the source code to it.
 on:
   push:
@@ -51,6 +51,8 @@ jobs:
             release/*.exe
             release/*.AppImage
             release/*.deb
+            release/*-portable.zip
+            release/*-portable.tar.gz
           if-no-files-found: error
 
   release:

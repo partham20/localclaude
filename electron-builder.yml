@@ -17,14 +17,26 @@ linux:
   target:
     - AppImage
     - deb
+    # portable: unpack anywhere and run ./localclaude (no FUSE needed, unlike the AppImage)
+    - tar.gz
+  # names the tar.gz; the AppImage and .deb keep their own names below
+  artifactName: ${productName}-${version}-linux-${arch}-portable.${ext}
   category: Development
   syncDesktopName: true
   icon: build/icon.png
   maintainer: Parthasarathy M <parthasarathym20@gmail.com>
+appImage:
+  artifactName: ${productName}-${version}.${ext}
+deb:
+  artifactName: ${name}_${version}_${arch}.${ext}
 win:
   target:
     - nsis
+    # portable: unzip anywhere and run LocalClaude.exe, nothing installed
+    - zip
   icon: build/icon.png
+  # names the zip; the installer keeps its own name below
+  artifactName: ${productName}-${version}-win-${arch}-portable.${ext}
 nsis:
   # no spaces: GitHub release downloads turn them into dots
   artifactName: ${productName}-Setup-${version}.${ext}

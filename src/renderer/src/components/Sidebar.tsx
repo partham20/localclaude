@@ -633,8 +633,8 @@ export function Sidebar(props: {
             { section: props.auth.email ?? 'Signed in' },
             { key: 'settings', label: 'Settings', onSelect: props.onSettings },
             { key: 'export', label: 'Export all chats…', onSelect: props.onExportAll },
-            'divider',
-            { key: 'signout', label: 'Sign out', onSelect: props.onSignOut }
+            // a token from CLAUDE_CODE_OAUTH_TOKEN can't be signed out of here (Settings says how)
+            ...(props.auth.usingOAuthTokenEnv ? [] : (['divider', { key: 'signout', label: 'Sign out', onSelect: props.onSignOut }] as const))
           ]}
         />
         <button className="icon-btn account-settings" onClick={props.onSettings} title="Settings (Ctrl+,)">

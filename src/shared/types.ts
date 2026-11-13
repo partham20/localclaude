@@ -293,6 +293,8 @@ export interface AuthStatus {
   consoleKeySource?: 'env' | 'saved'
   /** a key is saved in Settings (it may be unused while LOCALCLAUDE_API_KEY is set) */
   consoleKeySaved?: boolean
+  /** CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) is set, so that token signs in. Never the token itself. */
+  usingOAuthTokenEnv?: boolean
   email?: string
   subscriptionType?: string
   error?: string
