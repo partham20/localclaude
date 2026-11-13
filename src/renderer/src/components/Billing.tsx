@@ -146,3 +146,24 @@ export function SessionBillingTag({ apiKeySource, expectKey }: { apiKeySource?: 
     </span>
   )
 }
+
+/**
+ * Settings → Account: the sign-out button, unless CLAUDE_CODE_OAUTH_TOKEN signs you in
+ * (`claude auth logout` can't remove an environment variable, so the button would do nothing).
+ */
+export function SignOut({ auth, onLogout }: { auth: AuthStatus; onLogout: () => void }) {
+  if (auth.usingOAuthTokenEnv)
+    return (
+      <p className="muted small">
+        You’re signed in with the CLAUDE_CODE_OAUTH_TOKEN environment variable. To sign out, remove that variable and restart LocalClaude.
+      </p>
+    )
+  return (
+    <>
+      <button className="btn danger" onClick={onLogout}>
+        Sign out
+      </button>
+      <p className="muted small">Signing out also signs out Claude Code in your terminal, since they share one login.</p>
+    </>
+  )
+}

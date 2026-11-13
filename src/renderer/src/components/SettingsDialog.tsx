@@ -7,7 +7,7 @@ import { McpManager } from './McpManager'
 import { MemoryList } from './Memory'
 import { ObsidianPanel } from './ObsidianPanel'
 import { billsConsoleKey } from '../../../shared/billing'
-import { ConsoleKeySettings } from './Billing'
+import { ConsoleKeySettings, SignOut } from './Billing'
 import { ShortcutField, StylesEditor, UsagePanel } from './SettingsExtras'
 
 const TABS: [string, string][] = [
@@ -369,7 +369,7 @@ export function SettingsDialog(props: {
                   <span>Plan</span>
                   <span>{props.auth.subscriptionType ?? 'Claude subscription'}</span>
                   <span>Sign-in</span>
-                  <span>{props.auth.authMethod ?? '—'}</span>
+                  <span>{props.auth.usingOAuthTokenEnv ? 'Subscription token (CLAUDE_CODE_OAUTH_TOKEN)' : (props.auth.authMethod ?? '—')}</span>
                 </div>
                 {props.auth.usingApiKeyEnv && (
                   <p className="notice">
@@ -377,10 +377,7 @@ export function SettingsDialog(props: {
                     {consoleKey ? 'only your subscription and LOCALCLAUDE_API_KEY are used.' : 'only your subscription is used.'}
                   </p>
                 )}
-                <button className="btn danger" onClick={() => void props.onLogout()}>
-                  Sign out
-                </button>
-                <p className="muted small">Signing out also signs out Claude Code in your terminal, since they share one login.</p>
+                <SignOut auth={props.auth} onLogout={() => void props.onLogout()} />
               </div>
               <ConsoleKeySettings
                 auth={props.auth}

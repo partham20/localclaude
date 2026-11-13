@@ -48,6 +48,7 @@ export function hadApiKeyInEnv(): boolean {
  * Environment for every Claude Code process this app starts.
  * API-key / third-party-provider variables are removed so requests always go
  * through your Claude subscription login (OAuth), never pay-per-token billing.
+ * CLAUDE_CODE_OAUTH_TOKEN is a subscription token, so it is kept: that's how token sign-in works.
  */
 export function subscriptionEnv(): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = { ...process.env }
@@ -140,9 +141,17 @@ function run(args: string[], timeoutMs = 20000): Promise<{ code: number | null; 
   })
 }
 
-/** Whether there's a Console key and where it's from: never the key itself. */
-function keyStatus(): Pick<AuthStatus, 'usingConsoleKey' | 'consoleKeySource' | 'consoleKeySaved'> {
-  return { usingConsoleKey: consoleKeySet(), consoleKeySource: consoleKeySource(), consoleKeySaved: !!savedConsoleKey }
+/**
+ * True if CLAUDE_CODE_OAUTH_TOKEN is set (a long-lived subscription token from `claude setup-token`).
+ * It is kept in subscriptionEnv(), so Claude Code signs in with it; `claude auth logout` can't remove it.
+ */
+export function hasOAuthTokenEnv(): boolean {
+  return !!process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim()
+}
+
+/** Whether there's a Console key and where it's from, and whether a subscription token is set: never the secrets themselves. */
+function keyStatus(): Pick<AuthStatus, 'usingConsoleKey' | 'consoleKeySource' | 'consoleKeySaved' | 'usingOAuthTokenEnv'> {
+  return { usingConsoleKey: consoleKeySet(), consoleKeySource: consoleKeySource(), consoleKeySaved: !!savedConsoleKey, usingOAuthTokenEnv: hasOAuthTokenEnv() }
 }
 
 export async function authStatus(): Promise<AuthStatus> {

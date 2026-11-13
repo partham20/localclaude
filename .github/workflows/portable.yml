@@ -1,0 +1,70 @@
+name: Portable builds
+
+# Builds the no-install versions (Windows .zip, Linux .tar.gz and AppImage) when a pull request
+# changes the packaging, or by hand from the Actions tab. Download them from the run's Artifacts.
+# Tagged releases build them too (release.yml).
+on:
+  pull_request:
+    paths:
+      - electron-builder.yml
+      - package.json
+      - package-lock.json
+      - .github/workflows/portable.yml
+  workflow_dispatch:
+
+concurrency:
+  group: portable-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win zip
+            name: LocalClaude-portable-windows-x64
+          - os: ubuntu-latest
+            target: --linux tar.gz AppImage
+            name: LocalClaude-portable-linux-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      # Installs Claude Code's native binary for this OS, which the build carries
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        shell: bash
+        run: npx electron-vite build && npx electron-builder ${{ matrix.target }} --publish never
+        env:
+          # not code-signed
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # The packaged app has Claude Code's binary where the app looks for it
+      - name: Check the bundled Claude Code
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then exe=release/win-unpacked/resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe
+          else exe=release/linux-unpacked/resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude; fi
+          "$exe" --version
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            release/*-portable.zip
+            release/*-portable.tar.gz
+            release/*.AppImage
+          if-no-files-found: error
+          # already compressed
+          compression-level: 0

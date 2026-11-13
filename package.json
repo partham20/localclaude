@@ -1,6 +1,6 @@
 {
   "name": "localclaude",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Personal desktop app for Claude, powered by Claude Code and your Claude subscription. Data stays on this machine.",
   "main": "out/main/index.js",
   "scripts": {
@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dist:linux": "electron-vite build && electron-builder --linux",
     "dist:win": "electron-vite build && electron-builder --win",
+    "dist:portable:linux": "electron-vite build && electron-builder --linux tar.gz AppImage",
+    "dist:portable:win": "electron-vite build && electron-builder --win zip",
     "test": "esbuild test/agent.test.ts --bundle --platform=node --format=esm --outfile=test/out/agent.test.mjs --alias:electron=./test/electron-stub.js --external:@anthropic-ai/claude-agent-sdk --external:unpdf --external:cross-spawn --external:react --external:react-dom --log-level=warning && node test/out/agent.test.mjs",
     "test:e2e": "electron-vite build && node test/e2e/launch.mjs"
   },

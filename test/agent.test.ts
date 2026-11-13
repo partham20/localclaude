@@ -43,7 +43,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { agentEnv, authStatus, checkConsoleKey, cleanConsoleKey, setSavedConsoleKey, subscriptionEnv } from '../src/main/claude'
 import { CONSOLE_KEY_NOTE, accountLabel, billsConsoleKey, sessionBilling } from '../src/shared/billing'
-import { AccountPlan, ConsoleKeySettings, SessionBillingTag, UsageIntro } from '../src/renderer/src/components/Billing'
+import { AccountPlan, ConsoleKeySettings, SessionBillingTag, SignOut, UsageIntro } from '../src/renderer/src/components/Billing'
 import type { AuthStatus } from '../src/shared/types'
 
 const sessions: SessionMeta[] = []
@@ -1033,6 +1033,39 @@ function yourName() {
 }
 
 /** LOCALCLAUDE_API_KEY: the app says which chats bill it, lets you switch, and never hands the key to the window. */
+// A long-lived token from `claude setup-token` in CLAUDE_CODE_OAUTH_TOKEN signs every Claude Code process in
+async function subscriptionToken() {
+  const TOKEN = 'sk-ant-oat01-TEST-ONLY-not-a-real-token'
+  const saved = { tok: process.env.CLAUDE_CODE_OAUTH_TOKEN, fake: process.env.LOCALCLAUDE_FAKE_AGENT }
+  try {
+    process.env.LOCALCLAUDE_FAKE_AGENT = '1'
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = TOKEN
+    assert.equal(subscriptionEnv().CLAUDE_CODE_OAUTH_TOKEN, TOKEN, 'titles, usage, sign-in and remote control get the token')
+    assert.equal(agentEnv().CLAUDE_CODE_OAUTH_TOKEN, TOKEN, 'chats and designs get it too')
+    assert.equal(agentEnv(false).CLAUDE_CODE_OAUTH_TOKEN, TOKEN)
+    const st: any = memStore()
+    const m = new SessionManager(st, () => {}, { transcriptExists: () => true })
+    assert.equal((m as any).get(m.create(process.cwd()).id).buildOptions().env.CLAUDE_CODE_OAUTH_TOKEN, TOKEN, 'a chat session passes it to Claude Code')
+    const on: AuthStatus = await authStatus()
+    assert.equal(on.usingOAuthTokenEnv, true)
+    assert.ok(!JSON.stringify(on).includes(TOKEN), 'the token never reaches the page')
+    const tokenHtml = renderToStaticMarkup(createElement(SignOut, { auth: on, onLogout: () => {} }))
+    assert.match(tokenHtml, /CLAUDE_CODE_OAUTH_TOKEN environment variable/)
+    assert.ok(!tokenHtml.includes('Sign out<'), 'no sign-out button that would do nothing')
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+    const off: AuthStatus = await authStatus()
+    assert.equal(off.usingOAuthTokenEnv, false)
+    assert.match(renderToStaticMarkup(createElement(SignOut, { auth: off, onLogout: () => {} })), /Sign out<\/button>/)
+    m.shutdownAll()
+    console.log('✓ subscription token: CLAUDE_CODE_OAUTH_TOKEN reaches every Claude Code process, no dead sign-out button')
+  } finally {
+    if (saved.tok === undefined) delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+    else process.env.CLAUDE_CODE_OAUTH_TOKEN = saved.tok
+    if (saved.fake === undefined) delete process.env.LOCALCLAUDE_FAKE_AGENT
+    else process.env.LOCALCLAUDE_FAKE_AGENT = saved.fake
+  }
+}
+
 async function consoleKeyBilling() {
   const SECRET = 'sk-ant-api03-TEST-ONLY-not-a-real-key-7f3a'
   const saved = { key: process.env.LOCALCLAUDE_API_KEY, anth: process.env.ANTHROPIC_API_KEY, fake: process.env.LOCALCLAUDE_FAKE_AGENT }
@@ -1359,6 +1392,7 @@ async function realSpawn() {
 await synthetic()
 // before the rest: a failure further down (e.g. designMode) stops the suite, and this must still run
 await consoleKeyBilling()
+await subscriptionToken()
 await checkpointsAndRewind()
 await slashCommandOutput()
 await computerUseOption()
