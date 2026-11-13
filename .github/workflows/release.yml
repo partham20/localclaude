@@ -2,9 +2,22 @@ name: Release
 
 # Pushing a version tag (v1.2.3) builds the Windows installer and portable zip, and the Linux AppImage, .deb and portable tar.gz on
 # GitHub, and puts them in a draft release for that tag. GitHub adds the source code to it.
+#
+# It can also be run by hand (Actions tab → Release → Run workflow): it then builds the chosen
+# commit and makes the release for the version in its package.json, creating the tag itself, so no
+# tag has to be pushed first.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or commit to release (its package.json version names the release)
+        default: main
+      publish:
+        description: Publish straight away (otherwise the release stays a draft)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -24,6 +37,9 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
+        with:
+          # run by hand: the chosen branch or commit; a pushed tag: that tag
+          ref: ${{ inputs.ref || github.ref }}
 
       - uses: actions/setup-node@v7
         with:
@@ -60,16 +76,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
 
-      - name: Draft the release
+      - name: Draft the release (a pushed tag)
+        if: github.event_name == 'push'
         run: |
           ls -la dist
           gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag \
             --title "LocalClaude ${GITHUB_REF_NAME#v}" --notes-file .github/release-notes.md
         env:
           GH_TOKEN: ${{ github.token }}
+
+      # Run by hand: the tag is v<version in package.json>, made on the commit that was built
+      - name: Make the release (run by hand)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          ls -la dist
+          tag="v$(node -p "require('./package.json').version")"
+          sha="$(git rev-parse HEAD)"
+          if gh release view "$tag" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "::error::$tag already exists. Bump the version in package.json first."
+            exit 1
+          fi
+          draft=--draft
+          if [ "$PUBLISH" = true ]; then draft=; fi
+          gh release create "$tag" dist/* $draft --target "$sha" \
+            --title "LocalClaude ${tag#v}" --notes-file .github/release-notes.md
+          echo "Released $tag from $sha" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH: ${{ inputs.publish }}
