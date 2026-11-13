@@ -11,6 +11,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync }
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { readMachineId } from './machineId'
+import { normalizeAppearance } from '../shared/customize'
 import { AppSettings, Artifact, ChatMessage, DEFAULT_SETTINGS, LockStatus, MemoryItem, Project, SessionMeta } from '../shared/types'
 
 interface Vault {
@@ -27,6 +28,8 @@ interface Vault {
   notes?: Record<string, string>
   /** Console API key saved in Settings (never sent to the window, never in exports or backups) */
   consoleApiKey?: string
+  /** subscription token (from `claude setup-token`) saved on the setup screen; same rules as the Console key */
+  oauthToken?: string
 }
 
 export interface BackupState {
@@ -91,7 +94,7 @@ export class SecureStore {
     try {
       const v = JSON.parse(this.decrypt(readFileSync(this.vaultFile))) as Vault
       if (v.machineHash !== this.machineHash) throw new Error('machine mismatch')
-      v.settings = { ...DEFAULT_SETTINGS, ...v.settings }
+      v.settings = { ...DEFAULT_SETTINGS, ...v.settings, appearance: normalizeAppearance(v.settings?.appearance) }
       this.vault = v
       this.countArtifactsOnce()
     } catch {
@@ -261,6 +264,16 @@ export class SecureStore {
   setConsoleKey(key: string | undefined): void {
     if (key) this.vault.consoleApiKey = key
     else delete this.vault.consoleApiKey
+    this.saveVault()
+  }
+
+  // ---------- subscription token ----------
+  getOAuthToken(): string | undefined {
+    return this.vault?.oauthToken
+  }
+  setOAuthToken(token: string | undefined): void {
+    if (token) this.vault.oauthToken = token
+    else delete this.vault.oauthToken
     this.saveVault()
   }
 

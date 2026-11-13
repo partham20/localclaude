@@ -23,12 +23,17 @@ import type {
   TurnStats
 } from '../../shared/types'
 import { api } from './api'
+import { allThemes, useAppearance } from './appearance'
 import { applyFonts } from './fonts'
+import { modHost, useModHost } from './mods/host'
+import { CommandPalette, type PaletteItem } from './components/CommandPalette'
+import { SetupScreen } from './components/SetupScreen'
+import { KEY_ACTIONS, comboFromEvent, normalizeAppearance, resolveBindings, LIMITS } from '../../shared/customize'
+import type { ModInfo } from '../../shared/types'
 import { ArtifactsView } from './components/ArtifactsView'
 import { ChatView } from './components/ChatView'
 import { DesignsView } from './components/DesignsView'
 import { LockScreen } from './components/LockScreen'
-import { LoginScreen } from './components/LoginScreen'
 import { ExportDialog } from './components/ExportDialog'
 import { PasswordDialog } from './components/PasswordDialog'
 import { ProjectView, ProjectsView } from './components/Projects'
@@ -100,19 +105,7 @@ function loadTranscriptMode(): TranscriptMode {
   }
 }
 
-function useTheme(theme: AppSettings['theme'] | undefined): void {
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const apply = (): void => {
-      const dark = theme === 'dark' || (theme !== 'light' && mq.matches)
-      document.documentElement.dataset.theme = dark ? 'dark' : 'light'
-      void api.setWindowTheme(dark)
-    }
-    apply()
-    mq.addEventListener('change', apply)
-    return () => mq.removeEventListener('change', apply)
-  }, [theme])
-}
+const isMac = navigator.platform.toLowerCase().includes('mac')
 
 export default function App() {
   const [lock, setLock] = useState<LockStatus | null>(null)
@@ -183,10 +176,30 @@ export default function App() {
     writePref('transcript', m)
   }, [])
 
-  useTheme(settings?.theme)
+  // ---- mods: their CSS and themes, and their scripts while they're switched on
+  const [mods, setMods] = useState<ModInfo[]>([])
+  const modSnap = useModHost()
+  const reloadMods = useCallback(async () => {
+    const list = await api.listMods()
+    setMods(list)
+    await modHost.sync(list, settingsRef.current?.mods ?? {}, true)
+  }, [])
+  const settingsRef = useRef<AppSettings | null>(null)
+  settingsRef.current = settings
+  const modsKey = JSON.stringify(settings?.mods ?? {})
+  useEffect(() => {
+    if (!settings) return
+    void modHost.sync(mods, settings.mods ?? {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mods, modsKey, !!settings])
+
+  useAppearance(settings, modSnap.themes, (dark) => modHost.emit('theme-changed', { dark }))
   useEffect(() => {
     if (settings) applyFonts(settings)
-  }, [settings?.replyFont, settings?.uiFont])
+  }, [settings?.replyFont, settings?.uiFont, settings?.appearance?.monoFont, settings?.appearance?.customUiFont, settings?.appearance?.customReplyFont])
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  /** the look-picking step after signing in on the setup screen */
+  const [onboarding, setOnboarding] = useState(false)
 
   const refreshAuth = useCallback(async () => setAuth(await api.authStatus()), [])
 
@@ -203,6 +216,7 @@ export default function App() {
     if (list.length) setActiveId((cur) => cur ?? list[0].id)
     if (list.length && nav.current.i < 0) nav.current = { stack: [list[0].id], i: 0 }
     void refreshAuth()
+    void api.listMods().then(setMods)
   }, [refreshAuth])
 
   useEffect(() => {
@@ -272,7 +286,10 @@ export default function App() {
           break
       }
       if ('sessionId' in e) {
-        if (e.type === 'turn-done') setRuntime((r) => ({ ...r, [e.sessionId]: { ...r[e.sessionId], status: 'idle', lastStats: e.stats } }))
+        if (e.type === 'turn-done') {
+          setRuntime((r) => ({ ...r, [e.sessionId]: { ...r[e.sessionId], status: 'idle', lastStats: e.stats } }))
+          modHost.emit('turn-done', { sessionId: e.sessionId, stats: e.stats })
+        }
         setHistories((h) => (h[e.sessionId] ? { ...h, [e.sessionId]: applyEvent(h[e.sessionId], e) } : h))
       }
     })
@@ -473,39 +490,161 @@ export default function App() {
   useEffect(() => api.onOpenSession((id) => openChat(id)), [openChat])
   useEffect(() => api.onNewChat(() => void newChat()), [newChat])
 
-  // keyboard shortcuts
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const mod = e.ctrlKey || e.metaKey
-      if (mod && e.key.toLowerCase() === 'n') {
-        e.preventDefault()
-        void newChat()
-      } else if (mod && e.key === ',') {
-        e.preventDefault()
-        setSettingsOpen('general')
-      } else if (mod && e.key.toLowerCase() === 'o') {
-        e.preventDefault()
-        setTranscript(transcript === 'verbose' ? 'normal' : 'verbose')
-      } else if (mod && e.key.toLowerCase() === 'b') {
-        e.preventDefault()
-        sidebar.toggle()
-      } else if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        e.preventDefault()
-        stepNav(e.key === 'ArrowLeft' ? -1 : 1)
-      } else if (mod && !e.shiftKey && e.key.toLowerCase() === 'f' && page.kind === 'chat' && activeId) {
-        e.preventDefault()
-        setFindRequest({ query: window.getSelection()?.toString().trim().slice(0, 100) ?? '', n: Date.now() })
-      } else if (mod && e.shiftKey && e.key.toLowerCase() === 'e') {
+  // ---- what each action does (keyboard shortcuts, the command palette and mods all use these)
+  const cycleTheme = useCallback(() => {
+    if (!settings) return
+    const themes = allThemes(modSnap.themes)
+    const a = normalizeAppearance(settings.appearance)
+    const i = themes.findIndex((t) => t.id === a.preset)
+    const next = themes[(i + 1) % themes.length]
+    void updateSettings({ appearance: { ...a, preset: next.id } })
+    setToast({ text: `Theme: ${next.name}` })
+  }, [settings, modSnap.themes, updateSettings])
+  const zoomBy = useCallback(
+    (d: number) => {
+      if (!settings) return
+      const a = normalizeAppearance(settings.appearance)
+      const zoom = d === 0 ? 1 : Math.round(Math.min(LIMITS.zoom.max, Math.max(LIMITS.zoom.min, a.zoom + d)) * 100) / 100
+      void updateSettings({ appearance: { ...a, zoom } })
+    },
+    [settings, updateSettings]
+  )
+  const actions = useMemo<Record<string, () => void>>(
+    () => ({
+      commandPalette: () => setPaletteOpen((o) => !o),
+      newChat: () => void newChat(),
+      settings: () => setSettingsOpen('general'),
+      appearance: () => setSettingsOpen('appearance'),
+      toggleSidebar: () => sidebar.toggle(),
+      toggleTranscript: () => setTranscript(transcript === 'verbose' ? 'normal' : 'verbose'),
+      find: () => {
+        if (page.kind === 'chat' && activeId) setFindRequest({ query: window.getSelection()?.toString().trim().slice(0, 100) ?? '', n: Date.now() })
+      },
+      export: () => {
         // export what's on screen: the chat, the project, or everything
-        e.preventDefault()
         if (page.kind === 'project') setExportReq({ scope: 'project', projectId: page.id })
         else if (page.kind === 'chat' && activeId) setExportReq({ scope: 'chat', sessionId: activeId })
         else setExportReq({ scope: 'all' })
-      }
+      },
+      back: () => stepNav(-1),
+      forward: () => stepNav(1),
+      toggleTheme: () => {
+        const dark = document.documentElement.dataset.theme === 'dark'
+        void updateSettings({ theme: dark ? 'light' : 'dark' })
+      },
+      nextTheme: cycleTheme,
+      zoomIn: () => zoomBy(LIMITS.zoom.step),
+      zoomOut: () => zoomBy(-LIMITS.zoom.step),
+      zoomReset: () => zoomBy(0),
+      projects: () => setPage({ kind: 'projects' }),
+      artifacts: () => setPage({ kind: 'artifacts' }),
+      design: () => setPage({ kind: 'designs' }),
+      reloadMods: () => void reloadMods().then(() => setToast({ text: 'Mods reloaded.' }))
+    }),
+    [newChat, sidebar, setTranscript, transcript, page, activeId, stepNav, updateSettings, cycleTheme, zoomBy, reloadMods]
+  )
+
+  // keyboard shortcuts: yours from Settings → Keyboard, then the ones mods' commands ask for
+  const bindings = useMemo(() => resolveBindings(settings?.keybindings), [settings?.keybindings])
+  useEffect(() => {
+    const byCombo = new Map<string, () => unknown>()
+    for (const act of KEY_ACTIONS) {
+      const c = bindings[act.id]
+      if (c && !byCombo.has(c)) byCombo.set(c, actions[act.id])
+    }
+    for (const cmd of modSnap.commands) if (cmd.shortcut && !byCombo.has(cmd.shortcut)) byCombo.set(cmd.shortcut, cmd.run)
+    const onKey = (e: KeyboardEvent): void => {
+      if (!lock?.ok || !auth?.loggedIn || onboarding) return
+      const fn = byCombo.get(comboFromEvent(e, isMac))
+      if (!fn) return
+      e.preventDefault()
+      void Promise.resolve(fn()).catch((err) => setToast({ text: String(err instanceof Error ? err.message : err), error: true }))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [newChat, transcript, setTranscript, sidebar, stepNav, page, activeId])
+  }, [bindings, actions, modSnap.commands, lock?.ok, auth?.loggedIn, onboarding])
+
+  // ---- what mods can reach
+  const activeRef = useRef<SessionMeta | null>(null)
+  activeRef.current = sessions.find((s) => s.id === activeId) ?? null
+  useEffect(() => {
+    modHost.bridge = {
+      newChat: () => newChat(),
+      openSettings: (tab) => setSettingsOpen(tab || 'general'),
+      open: (kind) => setPage({ kind }),
+      send: async (text) => {
+        const id = activeRef.current?.id ?? (await newChat()).id
+        await api.send({ sessionId: id, text, attachments: [] })
+      },
+      activeChat: () => (activeRef.current ? { id: activeRef.current.id, title: activeRef.current.title, cwd: activeRef.current.cwd } : null),
+      settings: () => settingsRef.current!,
+      setAppearance: (patch) => updateSettings({ appearance: { ...normalizeAppearance(settingsRef.current?.appearance), ...patch } }),
+      setTheme: (theme) => updateSettings({ theme }),
+      toast: (text, error) => setToast({ text, error })
+    }
+  }, [newChat, updateSettings])
+  useEffect(() => {
+    if (activeId) modHost.emit('chat-opened', { id: activeId })
+  }, [activeId])
+
+  // ---- the command palette: actions, chats, themes, settings pages, and mods' commands
+  const paletteItems = useMemo<PaletteItem[]>(() => {
+    if (!paletteOpen) return []
+    const icons: Record<string, string> = {
+      newChat: 'compose',
+      settings: 'settings',
+      appearance: 'palette',
+      toggleSidebar: 'sidebar',
+      toggleTranscript: 'list',
+      find: 'search',
+      export: 'download',
+      back: 'back',
+      forward: 'forward',
+      toggleTheme: 'moon',
+      nextTheme: 'palette',
+      zoomIn: 'plus',
+      zoomOut: 'expand',
+      zoomReset: 'retry',
+      projects: 'project',
+      artifacts: 'shapes',
+      design: 'penTool',
+      reloadMods: 'puzzle'
+    }
+    const items: PaletteItem[] = KEY_ACTIONS.filter((a) => a.id !== 'commandPalette').map((a) => ({
+      id: `app:${a.id}`,
+      title: a.label,
+      run: actions[a.id],
+      shortcut: bindings[a.id] || undefined,
+      icon: icons[a.id],
+      group: 'LocalClaude'
+    }))
+    const tabs: [string, string, string][] = [
+      ['appearance', 'Appearance', 'palette'],
+      ['keyboard', 'Keyboard shortcuts', 'keyboard'],
+      ['mods', 'Mods', 'puzzle'],
+      ['tools', 'Tools & computer', 'monitor'],
+      ['memory', 'Memory & data', 'memory'],
+      ['account', 'Account & sign-in', 'key'],
+      ['usage', 'Usage', 'sliders']
+    ]
+    for (const [tab, label, icon] of tabs) items.push({ id: `settings:${tab}`, title: `Settings: ${label}`, run: () => setSettingsOpen(tab), icon, group: 'Settings' })
+    const a = settings ? normalizeAppearance(settings.appearance) : null
+    for (const t of allThemes(modSnap.themes))
+      items.push({
+        id: `theme:${t.id}`,
+        title: `Theme: ${t.name}${a?.preset === t.id ? ' (current)' : ''}`,
+        keywords: t.description,
+        run: () => a && void updateSettings({ appearance: { ...a, preset: t.id } }),
+        icon: 'palette',
+        group: t.source ? t.source.replace(/^script:/, '') : 'Themes'
+      })
+    for (const m of ['system', 'light', 'dark'] as const)
+      items.push({ id: `mode:${m}`, title: `Mode: ${m === 'system' ? 'Match system' : m === 'light' ? 'Light' : 'Dark'}`, run: () => void updateSettings({ theme: m }), icon: m === 'dark' ? 'moon' : m === 'light' ? 'sun' : 'monitor', group: 'Themes' })
+    for (const c of modSnap.commands) items.push({ ...c, icon: 'puzzle' })
+    for (const s of sessions.slice(0, 200)) items.push({ id: `chat:${s.id}`, title: s.title || 'New chat', run: () => openChat(s.id), icon: s.design ? 'penTool' : 'chat', group: 'Chat' })
+    for (const p of projects) items.push({ id: `project:${p.id}`, title: p.name, run: () => setPage({ kind: 'project', id: p.id }), icon: 'project', group: 'Project' })
+    return items
+  }, [paletteOpen, actions, bindings, settings, modSnap.themes, modSnap.commands, sessions, projects, openChat, updateSettings])
 
   if (!lock) return <div className="splash">Opening…</div>
   if (!lock.ok)
@@ -521,8 +660,26 @@ export default function App() {
         }}
       />
     )
-  if (!settings || !auth) return <div className="splash">Checking your Claude sign-in…</div>
-  if (!auth.loggedIn) return <LoginScreen auth={auth} onDone={refreshAuth} />
+  if (!settings || !auth)
+    return (
+      <div className="splash">
+        <Spark size={36} animate className="working-spark" />
+        <span>Checking your Claude sign-in…</span>
+      </div>
+    )
+  if (!auth.loggedIn || onboarding)
+    return (
+      <SetupScreen
+        auth={auth}
+        settings={settings}
+        onAuthChanged={async () => {
+          setOnboarding(true)
+          await refreshAuth()
+        }}
+        onChange={updateSettings}
+        onFinish={() => setOnboarding(false)}
+      />
+    )
 
   const active = sessions.find((s) => s.id === activeId) ?? null
   const pendingBySession: Record<string, number> = {}
@@ -622,6 +779,20 @@ export default function App() {
         onExportChats={(ids) => setExportReq({ scope: 'chats', sessionIds: ids })}
         onRename={(id, t) => void renameChat(id, t)}
         onSettings={() => setSettingsOpen('general')}
+        onPalette={() => setPaletteOpen(true)}
+        modItems={modSnap.sidebar.map((m) => ({
+          key: `${m.modId}:${m.id}`,
+          label: m.label,
+          icon: m.icon,
+          title: m.title,
+          onClick: () => void Promise.resolve(m.onClick()).catch((e) => setToast({ text: String(e), error: true }))
+        }))}
+        statusItems={modSnap.status.map((m) => ({
+          key: `${m.modId}:${m.id}`,
+          text: m.text,
+          title: m.title,
+          onClick: m.onClick ? () => void Promise.resolve(m.onClick!()).catch((e) => setToast({ text: String(e), error: true })) : undefined
+        }))}
       />
       <main className="main">
         {page.kind === 'artifacts' ? (
@@ -746,8 +917,11 @@ export default function App() {
           onGlobalMemory={setGlobalMemory}
           onExportAll={() => setExportReq({ scope: 'all' })}
           onImport={() => void runImport()}
+          mods={mods}
+          onReloadMods={reloadMods}
         />
       )}
+      {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}
       {exportReq && (
         <ExportDialog
           scope={exportReq.scope}

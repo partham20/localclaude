@@ -13,6 +13,8 @@ A personal desktop app for Claude on Windows and Linux, powered by Claude Code a
 
 The installers aren't code-signed, so Windows SmartScreen may say "Windows protected your PC": choose **More info → Run anyway**.
 
-On first launch, click **Sign in with Claude**, or set a subscription token from `claude setup-token` first ([how](https://github.com/partham20/localclaude#sign-in-with-a-subscription-token-instead)). Your chats are stored encrypted on that computer only.
+On first launch, the setup screen asks how to sign in: your Claude subscription in the browser, a token from `claude setup-token` ([how](https://github.com/partham20/localclaude#sign-in-with-a-subscription-token-instead)), or a Console API key. Your chats are stored encrypted on that computer only.
+
+Make it yours in **Settings → Appearance** (themes, colors, fonts, sizes, your own CSS), **Settings → Keyboard**, **Ctrl+K**, and **Settings → Mods** ([guide](https://github.com/partham20/localclaude/blob/main/MODS.md)).
 
 **Personal use:** LocalClaude signs in with your own Claude subscription. Anthropic allows that for personal projects; offering it to other people to sign in with needs Anthropic's approval.

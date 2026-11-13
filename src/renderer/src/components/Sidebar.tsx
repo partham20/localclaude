@@ -153,6 +153,11 @@ export function Sidebar(props: {
   onExportAll: () => void
   onImport: () => void
   onSettings: () => void
+  /** buttons and status items mods add */
+  modItems?: { key: string; label: string; icon?: string; title?: string; onClick: () => void }[]
+  statusItems?: { key: string; text: string; title?: string; onClick?: () => void }[]
+  /** opens the command palette */
+  onPalette?: () => void
   onSignOut: () => void
 }) {
   const [filter, setFilter] = useState('')
@@ -506,6 +511,12 @@ export function Sidebar(props: {
         <Icon name="penTool" size={16} />
         Design
       </button>
+      {props.modItems?.map((m) => (
+        <button key={m.key} className="side-nav mod-nav" onClick={m.onClick} title={m.title}>
+          <Icon name={m.icon ?? 'sparkle'} size={16} />
+          {m.label}
+        </button>
+      ))}
 
       <nav className="session-list">
         {pinnedCount > 0 && (
@@ -615,6 +626,21 @@ export function Sidebar(props: {
         </div>
       )}
 
+      {!!props.statusItems?.length && (
+        <div className="side-status">
+          {props.statusItems.map((it) =>
+            it.onClick ? (
+              <button key={it.key} className="status-item" title={it.title} onClick={it.onClick}>
+                {it.text}
+              </button>
+            ) : (
+              <span key={it.key} className="status-item" title={it.title}>
+                {it.text}
+              </span>
+            )
+          )}
+        </div>
+      )}
       <div className="side-account">
         <Menu
           className="account-menu"
@@ -632,9 +658,10 @@ export function Sidebar(props: {
           entries={[
             { section: props.auth.email ?? 'Signed in' },
             { key: 'settings', label: 'Settings', onSelect: props.onSettings },
+            ...(props.onPalette ? [{ key: 'palette', label: 'Command palette', onSelect: props.onPalette }] : []),
             { key: 'export', label: 'Export all chats…', onSelect: props.onExportAll },
             // a token from CLAUDE_CODE_OAUTH_TOKEN can't be signed out of here (Settings says how)
-            ...(props.auth.usingOAuthTokenEnv ? [] : (['divider', { key: 'signout', label: 'Sign out', onSelect: props.onSignOut }] as const))
+            ...(props.auth.usingOAuthTokenEnv && !props.auth.apiKeyOnly ? [] : (['divider', { key: 'signout', label: 'Sign out', onSelect: props.onSignOut }] as const))
           ]}
         />
         <button className="icon-btn account-settings" onClick={props.onSettings} title="Settings (Ctrl+,)">

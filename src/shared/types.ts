@@ -1,4 +1,6 @@
 // Types shared between the Electron main process, preload and renderer.
+import { DEFAULT_APPEARANCE, type Appearance } from './customize'
+export type { Appearance, ModInfo, ThemePreset } from './customize'
 
 /** auto = Claude Code's classifier approves or denies each action */
 export type PermissionModeUI = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions'
@@ -47,9 +49,17 @@ export interface AppSettings {
   mcpServers: Record<string, McpServerEntry>
   theme: 'system' | 'light' | 'dark'
   /** font for Claude's replies */
-  replyFont: 'source-serif' | 'newsreader' | 'times' | 'georgia' | 'cambria' | 'sans'
+  replyFont: 'source-serif' | 'newsreader' | 'lora' | 'times' | 'georgia' | 'cambria' | 'sans'
   /** font for your messages, the reply box and the rest of the interface */
-  uiFont: 'dm-sans' | 'system'
+  uiFont: 'dm-sans' | 'inter' | 'geist' | 'system'
+  /** themes, colors, fonts, sizes, layout and your own CSS (Settings → Appearance) */
+  appearance: Appearance
+  /** your keyboard shortcuts, by action id; actions left out keep their default ('' = none) */
+  keybindings: Record<string, string>
+  /** mods switched on, by id (Settings → Mods) */
+  mods: Record<string, boolean>
+  /** how you chose to sign in on the setup screen ('' = Claude Code's own sign-in, as before) */
+  signInMethod: '' | 'subscription' | 'token' | 'apiKey'
   /** desktop notification when Claude finishes or needs you while LocalClaude isn't focused */
   notifications: boolean
   /** name new chats with a short AI-written title after the first reply (one small Haiku request) */
@@ -295,6 +305,10 @@ export interface AuthStatus {
   consoleKeySaved?: boolean
   /** CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) is set, so that token signs in. Never the token itself. */
   usingOAuthTokenEnv?: boolean
+  /** a subscription token is saved in LocalClaude (used unless CLAUDE_CODE_OAUTH_TOKEN is set). Never the token itself. */
+  oauthTokenSaved?: boolean
+  /** signed in with a Console API key only (no Claude subscription): everything bills the key */
+  apiKeyOnly?: boolean
   email?: string
   subscriptionType?: string
   error?: string
@@ -365,7 +379,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   userName: '',
   remoteSpawn: 'same-dir',
   remotePermissionMode: '',
-  appendSystemPrompt: ''
+  appendSystemPrompt: '',
+  appearance: DEFAULT_APPEARANCE,
+  keybindings: {},
+  mods: {},
+  signInMethod: ''
 }
 
 // ---------------------------------------------------------------- artifacts

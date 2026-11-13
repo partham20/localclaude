@@ -54,9 +54,42 @@ export function subscriptionEnv(): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = { ...process.env }
   for (const k of STRIP) delete env[k]
   delete env.LOCALCLAUDE_API_KEY
-  env.CLAUDE_AGENT_SDK_CLIENT_APP = 'localclaude/1.0.0'
+  env.CLAUDE_AGENT_SDK_CLIENT_APP = 'localclaude/1.4.0'
   delete env.ELECTRON_RUN_AS_NODE
+  // a token saved on the setup screen signs in, unless CLAUDE_CODE_OAUTH_TOKEN is set (that one wins)
+  if (!env.CLAUDE_CODE_OAUTH_TOKEN?.trim() && savedOAuthToken) env.CLAUDE_CODE_OAUTH_TOKEN = savedOAuthToken
+  // signed in with only a Console key: there's no subscription, so everything uses the key
+  const key = apiKeyOnly ? consoleKey() : undefined
+  if (key) env.ANTHROPIC_API_KEY = key
   return env
+}
+
+/** A subscription token (from `claude setup-token`) saved on the setup screen or in Settings, kept in the encrypted vault. */
+let savedOAuthToken: string | undefined
+export function setSavedOAuthToken(token: string | undefined): void {
+  savedOAuthToken = token || undefined
+}
+
+/** Signed in with a Console API key and no subscription (the setup screen's third choice). */
+let apiKeyOnly = false
+export function setApiKeyOnly(on: boolean): void {
+  apiKeyOnly = on
+}
+export function isApiKeyOnly(): boolean {
+  return apiKeyOnly && consoleKeySet()
+}
+
+/** Tidy and sanity-check a pasted subscription token. Returns an error to show, or the token. */
+export function cleanOAuthToken(raw: string): { token: string } | { error: string } {
+  const token = String(raw ?? '')
+    .trim()
+    .replace(/^CLAUDE_CODE_OAUTH_TOKEN=/, '')
+    .replace(/^["']|["']$/g, '')
+  if (!token) return { error: 'Paste a token first.' }
+  if (/^sk-ant-api/.test(token)) return { error: 'That’s a Console API key. Choose “Console API key” for it instead.' }
+  if (!/^sk-ant-oat[0-9]*-[A-Za-z0-9_-]{20,}$/.test(token))
+    return { error: 'That doesn’t look like a subscription token (they start with sk-ant-oat). Run claude setup-token to get one.' }
+  return { token }
 }
 
 /** A Console key saved in Settings (kept in the encrypted vault; set at start-up and when it changes). */
@@ -150,31 +183,51 @@ export function hasOAuthTokenEnv(): boolean {
 }
 
 /** Whether there's a Console key and where it's from, and whether a subscription token is set: never the secrets themselves. */
-function keyStatus(): Pick<AuthStatus, 'usingConsoleKey' | 'consoleKeySource' | 'consoleKeySaved' | 'usingOAuthTokenEnv'> {
-  return { usingConsoleKey: consoleKeySet(), consoleKeySource: consoleKeySource(), consoleKeySaved: !!savedConsoleKey, usingOAuthTokenEnv: hasOAuthTokenEnv() }
+function keyStatus(): Pick<AuthStatus, 'usingConsoleKey' | 'consoleKeySource' | 'consoleKeySaved' | 'usingOAuthTokenEnv' | 'oauthTokenSaved' | 'apiKeyOnly'> {
+  return {
+    usingConsoleKey: consoleKeySet(),
+    consoleKeySource: consoleKeySource(),
+    consoleKeySaved: !!savedConsoleKey,
+    usingOAuthTokenEnv: hasOAuthTokenEnv(),
+    oauthTokenSaved: !!savedOAuthToken,
+    apiKeyOnly: isApiKeyOnly()
+  }
+}
+
+/** End-to-end tests start signed out with LOCALCLAUDE_FAKE_SIGNED_OUT, and sign in by saving a token or key. */
+let fakeSignedIn = !process.env.LOCALCLAUDE_FAKE_SIGNED_OUT
+export function setFakeSignedIn(on: boolean): void {
+  fakeSignedIn = on
 }
 
 export async function authStatus(): Promise<AuthStatus> {
-  if (process.env.LOCALCLAUDE_FAKE_AGENT)
-    return { loggedIn: true, authMethod: 'claude.ai', email: 'e2e@example.com', subscriptionType: 'max', usingApiKeyEnv: false, ...keyStatus() }
+  if (process.env.LOCALCLAUDE_FAKE_AGENT) {
+    if (isApiKeyOnly()) return { loggedIn: true, authMethod: 'apiKey', usingApiKeyEnv: false, ...keyStatus() }
+    const loggedIn = fakeSignedIn || !!savedOAuthToken
+    return loggedIn
+      ? { loggedIn, authMethod: 'claude.ai', email: 'e2e@example.com', subscriptionType: 'max', usingApiKeyEnv: false, ...keyStatus() }
+      : { loggedIn, usingApiKeyEnv: false, ...keyStatus() }
+  }
   const r = await run(['auth', 'status', '--json'])
-  const base: AuthStatus = { loggedIn: false, usingApiKeyEnv: hadApiKeyInEnv(), ...keyStatus() }
+  const base: AuthStatus = { loggedIn: isApiKeyOnly(), authMethod: isApiKeyOnly() ? 'apiKey' : undefined, usingApiKeyEnv: hadApiKeyInEnv(), ...keyStatus() }
   try {
     const j = JSON.parse(r.out)
     return {
       ...base,
-      loggedIn: !!j.loggedIn,
-      authMethod: j.authMethod,
+      loggedIn: !!j.loggedIn || base.loggedIn,
+      authMethod: base.authMethod ?? j.authMethod,
       apiProvider: j.apiProvider,
       email: j.email ?? j.account?.email,
       subscriptionType: j.subscriptionType ?? j.account?.subscriptionType
     }
   } catch {
+    if (base.loggedIn) return base
     return { ...base, error: (r.err || r.out || 'Could not read auth status').trim() }
   }
 }
 
 export async function logout(): Promise<void> {
+  if (process.env.LOCALCLAUDE_FAKE_AGENT) return void (fakeSignedIn = false)
   await run(['auth', 'logout'])
 }
 
@@ -187,6 +240,18 @@ export function startLogin(win: BrowserWindow): void {
   const bin = resolveClaudeBinary()
   const send = (e: LoginEvent): void => {
     if (!win.isDestroyed()) win.webContents.send('login:event', e)
+  }
+  if (process.env.LOCALCLAUDE_FAKE_AGENT) {
+    // tests: pretend the browser sign-in went through
+    const url = 'https://claude.ai/oauth/authorize?e2e=1'
+    void shell.openExternal(url)
+    send({ type: 'output', text: `Opening your browser to sign in…\n${url}\n`, url })
+    setTimeout(() => {
+      fakeSignedIn = true
+      send({ type: 'output', text: 'Login successful.\n' })
+      send({ type: 'exit', code: 0 })
+    }, 400)
+    return
   }
   if (!bin) {
     send({ type: 'output', text: 'Claude Code binary not found. Run `npm install` in the app folder.\n' })

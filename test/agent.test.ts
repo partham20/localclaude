@@ -41,7 +41,24 @@ import { countChanges, diffStrings, linesFromPatch } from '../src/shared/diff'
 import assert from 'node:assert/strict'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { agentEnv, authStatus, checkConsoleKey, cleanConsoleKey, setSavedConsoleKey, subscriptionEnv } from '../src/main/claude'
+import { agentEnv, authStatus, checkConsoleKey, cleanConsoleKey, cleanOAuthToken, setApiKeyOnly, setSavedConsoleKey, setSavedOAuthToken, subscriptionEnv } from '../src/main/claude'
+import {
+  BUILTIN_THEMES,
+  DEFAULT_APPEARANCE,
+  comboFromEvent,
+  conflicts,
+  displayCombo,
+  effectiveDark,
+  isColor,
+  normalizeAppearance,
+  onAccent,
+  parseManifest,
+  parseTheme,
+  resolveBindings,
+  themeVars
+} from '../src/shared/customize'
+import { createExampleMod, listMods, modFile, serveModFile } from '../src/main/mods'
+import { score } from '../src/renderer/src/components/CommandPalette'
 import { CONSOLE_KEY_NOTE, accountLabel, billsConsoleKey, sessionBilling } from '../src/shared/billing'
 import { AccountPlan, ConsoleKeySettings, SessionBillingTag, SignOut, UsageIntro } from '../src/renderer/src/components/Billing'
 import type { AuthStatus } from '../src/shared/types'
@@ -1389,7 +1406,152 @@ async function realSpawn() {
   mgr.shutdownAll()
 }
 
+/** 1.4: themes, colors, shortcuts and mods (the pure parts, and the mods folder on disk). */
+async function customization() {
+  // ---- appearance: old settings fill in, odd values are kept in range, unsafe colors are dropped
+  const a = normalizeAppearance({ zoom: 9, replySize: -3, density: 'huge' as any, colors: { bg: '#123456', text: 'red; } body { display:none', nope: '#fff' } as any })
+  assert.equal(a.zoom, 1.4)
+  assert.equal(a.replySize, 13)
+  assert.equal(a.density, 'comfortable')
+  assert.deepEqual(a.colors, { bg: '#123456' }, 'only real tokens with real colors')
+  assert.deepEqual(normalizeAppearance(undefined), DEFAULT_APPEARANCE)
+  assert.ok(isColor('oklch(0.7 0.1 200)') && isColor('#abc') && !isColor('url(x)') && !isColor('#12;}'))
+  assert.equal(normalizeAppearance({ customUiFont: "Inter'; } * { color: red" }).customUiFont, 'Inter    color red', 'font names can’t break out of the CSS')
+
+  // ---- themes: LocalClaude's own sets nothing; a preset fills in what it leaves out; your colors win
+  assert.deepEqual(themeVars(DEFAULT_APPEARANCE, true, BUILTIN_THEMES), {}, 'the default look is base.css, untouched')
+  const nord = themeVars({ ...DEFAULT_APPEARANCE, preset: 'nord' }, true, BUILTIN_THEMES)
+  assert.equal(nord.bg, '#2e3440')
+  assert.ok(nord.hover?.startsWith('color-mix(') && nord['accent-soft'] && nord['input-border'], 'derived tokens are filled in')
+  const mine = themeVars({ ...DEFAULT_APPEARANCE, preset: 'nord', accent: '#ff0000', colors: { hover: '#000000' } }, false, BUILTIN_THEMES)
+  assert.equal(mine.accent, '#ff0000')
+  assert.ok(mine['accent-soft'].includes('#ff0000'), 'accent shades follow your accent')
+  assert.equal(mine.hover, '#000000', 'a color you set beats a derived one')
+  assert.equal(onAccent('#a78bfa'), '#111111', 'dark text on a light accent')
+  assert.equal(onAccent('#c2603e'), '#ffffff')
+  for (const t of BUILTIN_THEMES) assert.ok(t.light || t.dark, `${t.id} has colors`)
+  assert.equal(effectiveDark('light', true, BUILTIN_THEMES.find((t) => t.id === 'sunset')), true, 'a dark-only theme switches the window to dark')
+  assert.equal(effectiveDark('system', true), true)
+  assert.equal(parseTheme({ id: 'x/../y', name: 'X', dark: { bg: '#000', evil: 'url(x)' } })?.id, 'xy')
+  assert.deepEqual(parseTheme({ id: 'x', name: 'X', dark: { bg: '#000', evil: '#fff' } })?.dark, { bg: '#000' })
+  assert.equal(parseTheme({ id: 'x', name: 'X' }), null, 'a theme needs colors')
+
+  // ---- keyboard: physical keys, so Shift+, is still ","; Ctrl vs ⌘; conflicts are found
+  const ev = (key: string, code: string, o: Partial<KeyboardEvent> = {}): any => ({ key, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...o })
+  assert.equal(comboFromEvent(ev('<', 'Comma', { ctrlKey: true, shiftKey: true })), 'Mod+Shift+,')
+  assert.equal(comboFromEvent(ev('k', 'KeyK', { metaKey: true }), true), 'Mod+K', '⌘ is Mod on a Mac')
+  assert.equal(comboFromEvent(ev('k', 'KeyK', { metaKey: true })), 'Meta+K', 'the Windows key is not Ctrl')
+  assert.equal(comboFromEvent(ev('ArrowLeft', 'ArrowLeft', { altKey: true })), 'Alt+ArrowLeft')
+  assert.equal(comboFromEvent(ev('Control', 'ControlLeft', { ctrlKey: true })), '', 'a lone modifier is nothing')
+  const b = resolveBindings({ newChat: 'Mod+K', back: '' })
+  assert.equal(b.newChat, 'Mod+K')
+  assert.equal(b.back, '', 'a removed shortcut stays removed')
+  assert.equal(b.settings, 'Mod+,', 'the rest keep their defaults')
+  assert.deepEqual(conflicts(b)['Mod+K'], ['commandPalette', 'newChat'])
+  assert.equal(displayCombo('Mod+Shift+E'), 'Ctrl+Shift+E')
+  assert.equal(displayCombo('Mod+Shift+E', true), '⌘⇧E')
+  assert.ok(score('new ch', 'New chat') > score('new ch', 'Open a new chat'), 'word starts rank first in the palette')
+  assert.equal(score('xyz', 'New chat'), 0)
+
+  // ---- mods: manifests can't reach outside their folder
+  assert.ok('error' in parseManifest({ main: '../../evil.js' }, 'm'))
+  assert.ok('error' in parseManifest({ styles: ['/etc/passwd'] }, 'm'))
+  assert.ok('error' in parseManifest({ id: 'bad id!' }, 'm'))
+  assert.ok('error' in parseManifest({ main: 'main.ts' }, 'm'), 'scripts are .js')
+  const ok = parseManifest({ name: 'Nice', styles: ['./a.css'], main: 'lib/main.js' }, 'nice-mod')
+  assert.ok('manifest' in ok && ok.manifest.id === 'nice-mod' && ok.manifest.styles?.[0] === 'a.css')
+
+  const dir = mkdtempSync(join(tmpdir(), 'lc-mods-'))
+  try {
+    assert.deepEqual(listMods(join(dir, 'missing')), [], 'no mods folder yet: no mods')
+    createExampleMod(dir)
+    mkdirSync(join(dir, 'broken'))
+    writeFileSync(join(dir, 'broken', 'mod.json'), '{ not json')
+    mkdirSync(join(dir, 'escapes'))
+    writeFileSync(join(dir, 'escapes', 'mod.json'), JSON.stringify({ styles: ['../example-mod/style.css'] }))
+    const mods = listMods(dir)
+    const ex = mods.find((m) => m.id === 'example-mod')!
+    assert.ok(ex && !ex.error, `the example mod loads (${ex?.error})`)
+    assert.match(ex.css, /\.titlebar/)
+    assert.deepEqual(ex.themes.map((t) => t.id), ['example-mod/ocean'], 'mod themes are named after the mod')
+    assert.equal(ex.main, 'main.js')
+    assert.match(mods.find((m) => m.id === 'broken')!.error!, /valid JSON/)
+    assert.ok(mods.find((m) => m.id === 'escapes')!.error, 'a style outside the folder is refused')
+    assert.equal(modFile(join(dir, 'example-mod'), '../broken/mod.json'), null)
+    // scripts are served only while the mod is on, and only from its folder
+    const off = serveModFile('lcmod://example-mod/main.js', () => false, dir)
+    assert.equal(off.status, 404)
+    const on = serveModFile('lcmod://example-mod/main.js', () => true, dir)
+    assert.equal(on.status, 200)
+    assert.match(await on.text(), /export default function activate/)
+    assert.equal(serveModFile('lcmod://example-mod/..%2Fbroken%2Fmod.json', () => true, dir).status, 404)
+    assert.equal(serveModFile('lcmod://example-mod/mod.json', () => true, dir).status, 200)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+  console.log('✓ customization: themes and colors, safe values, shortcuts, the command palette’s ranking, mods on disk and served only while on')
+}
+
+/** 1.4's setup screen: a pasted subscription token, or a Console key with no subscription. */
+async function signInChoices() {
+  const TOKEN = 'sk-ant-oat01-TEST-ONLY-not-a-real-token-xyz'
+  const KEY = 'sk-ant-api03-TEST-ONLY-not-a-real-key-7f3a'
+  const saved = { tok: process.env.CLAUDE_CODE_OAUTH_TOKEN, fake: process.env.LOCALCLAUDE_FAKE_AGENT, out: process.env.LOCALCLAUDE_FAKE_SIGNED_OUT, key: process.env.LOCALCLAUDE_API_KEY }
+  try {
+    process.env.LOCALCLAUDE_FAKE_AGENT = '1'
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+    delete process.env.LOCALCLAUDE_API_KEY
+    assert.deepEqual(cleanOAuthToken(`  CLAUDE_CODE_OAUTH_TOKEN="${TOKEN}" `), { token: TOKEN }, 'a pasted export line is tidied')
+    assert.match((cleanOAuthToken(KEY) as any).error, /Console API key/, 'a Console key pasted as a token says which choice to use')
+    assert.ok('error' in cleanOAuthToken('hello'))
+
+    // a saved token signs Claude Code in, unless the environment variable is set
+    setSavedOAuthToken(TOKEN)
+    assert.equal(subscriptionEnv().CLAUDE_CODE_OAUTH_TOKEN, TOKEN)
+    assert.equal(agentEnv().CLAUDE_CODE_OAUTH_TOKEN, TOKEN)
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'sk-ant-oat01-from-the-environment-aaaaaaaaaaaa'
+    assert.equal(subscriptionEnv().CLAUDE_CODE_OAUTH_TOKEN, process.env.CLAUDE_CODE_OAUTH_TOKEN, 'the environment variable wins')
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+    const st = await authStatus()
+    assert.equal(st.oauthTokenSaved, true)
+    assert.ok(!JSON.stringify(st).includes(TOKEN), 'the token never reaches the window')
+    assert.match(renderToStaticMarkup(createElement(SignOut, { auth: st, onLogout: () => {} })), /removes the subscription token saved/)
+    setSavedOAuthToken(undefined)
+
+    // a Console key only: everything (titles, usage, sign-in checks too) bills it, and that counts as signed in
+    setSavedConsoleKey(KEY)
+    assert.equal(subscriptionEnv().ANTHROPIC_API_KEY, undefined, 'with a subscription, background work never bills the key')
+    setApiKeyOnly(true)
+    assert.equal(subscriptionEnv().ANTHROPIC_API_KEY, KEY)
+    assert.equal(agentEnv(false).ANTHROPIC_API_KEY, KEY, 'there is no subscription to fall back to')
+    process.env.LOCALCLAUDE_FAKE_SIGNED_OUT = '1'
+    const keyOnly = await authStatus()
+    assert.equal(keyOnly.loggedIn, true)
+    assert.equal(keyOnly.apiKeyOnly, true)
+    assert.ok(!JSON.stringify(keyOnly).includes(KEY), 'the key never reaches the window')
+    assert.match(renderToStaticMarkup(createElement(SignOut, { auth: keyOnly, onLogout: () => {} })), /Console API key only/)
+    setSavedConsoleKey(undefined)
+    assert.equal(subscriptionEnv().ANTHROPIC_API_KEY, undefined, 'no key, nothing to bill')
+    setApiKeyOnly(false)
+  } finally {
+    setSavedOAuthToken(undefined)
+    setSavedConsoleKey(undefined)
+    setApiKeyOnly(false)
+    for (const [k, v] of [
+      ['CLAUDE_CODE_OAUTH_TOKEN', saved.tok],
+      ['LOCALCLAUDE_FAKE_AGENT', saved.fake],
+      ['LOCALCLAUDE_FAKE_SIGNED_OUT', saved.out],
+      ['LOCALCLAUDE_API_KEY', saved.key]
+    ] as const)
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+  }
+  console.log('✓ sign-in choices: a saved token signs in (the environment wins), a key-only sign-in bills everything to the key, secrets stay in the main process')
+}
+
 await synthetic()
+await customization()
+await signInChoices()
 // before the rest: a failure further down (e.g. designMode) stops the suite, and this must still run
 await consoleKeyBilling()
 await subscriptionToken()
