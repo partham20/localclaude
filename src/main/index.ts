@@ -33,7 +33,24 @@ import { renderArtifactPage } from './artifacts'
 import { DRAFT_PAGE, withDesignBridge } from './design'
 import { exportDesign, exportFramesPdf } from './designExport'
 import { BACKUP_EXT, MIN_PASSWORD, backupDue, backupFileName, createBackup, decryptBackup, isEncryptedBackup, writeBackupTo } from './backup'
-import { authStatus, cancelLogin, checkConsoleKey, cleanConsoleKey, logout, resolveClaudeBinary, sendLoginInput, setSavedConsoleKey, startLogin, subscriptionEnv } from './claude'
+import {
+  authStatus,
+  cancelLogin,
+  checkConsoleKey,
+  cleanConsoleKey,
+  cleanOAuthToken,
+  logout,
+  resolveClaudeBinary,
+  sendLoginInput,
+  setApiKeyOnly,
+  setFakeSignedIn,
+  setSavedConsoleKey,
+  setSavedOAuthToken,
+  startLogin,
+  subscriptionEnv
+} from './claude'
+import { normalizeAppearance } from '../shared/customize'
+import { createExampleMod, listMods, openModsFolder, serveModFile } from './mods'
 import { stopComputerHelper } from './computer'
 import { attachContextMenu } from './contextMenu'
 import { createWorktree, gitStatus } from './git'
@@ -67,7 +84,9 @@ import { createZip } from './zip'
 // chat images from lcimg://chat/<chat>/<image> (decrypted on request).
 protocol.registerSchemesAsPrivileged([
   { scheme: 'artifact', privileges: { standard: true, secure: true, supportFetchAPI: true } },
-  { scheme: 'lcimg', privileges: { standard: true, secure: true } }
+  { scheme: 'lcimg', privileges: { standard: true, secure: true } },
+  // mod scripts (and what they import), only for mods that are switched on
+  { scheme: 'lcmod', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
 ])
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
@@ -175,6 +194,8 @@ function registerIpc(): void {
     () => {
       manager?.shutdownAll()
       setSavedConsoleKey(undefined)
+      setSavedOAuthToken(undefined)
+      setApiKeyOnly(false)
       return store.reset()
     },
     true
@@ -212,21 +233,88 @@ function registerIpc(): void {
   handle('consoleKey:remove', () => {
     store.setConsoleKey(undefined)
     setSavedConsoleKey(undefined)
+    if (store.getSettings().signInMethod === 'apiKey') {
+      store.setSettings({ signInMethod: '' })
+      setApiKeyOnly(false)
+    }
     manager.restartAllSoon()
     log('info', 'Console API key removed from Settings')
     return { ok: true }
   })
-  handle('auth:login', () => win && startLogin(win))
+  // A subscription token (from `claude setup-token`) pasted on the setup screen or in Settings:
+  // kept in the encrypted vault, never sent back, and checked by asking Claude Code who it signs in as.
+  handle('oauthToken:save', async (raw: string) => {
+    const c = cleanOAuthToken(raw)
+    if ('error' in c) return { ok: false, error: c.error }
+    const before = store.getOAuthToken()
+    store.setOAuthToken(c.token)
+    setSavedOAuthToken(c.token)
+    const st = await authStatus()
+    if (!st.loggedIn) {
+      store.setOAuthToken(before)
+      setSavedOAuthToken(before)
+      return { ok: false, error: 'Claude Code didn’t accept this token. Make a new one with claude setup-token and paste it again.' }
+    }
+    store.setSettings({ signInMethod: 'token' })
+    manager.restartAllSoon()
+    log('info', 'subscription token saved')
+    return { ok: true }
+  })
+  handle('oauthToken:remove', () => {
+    store.setOAuthToken(undefined)
+    setSavedOAuthToken(undefined)
+    if (store.getSettings().signInMethod === 'token') store.setSettings({ signInMethod: '' })
+    manager.restartAllSoon()
+    log('info', 'subscription token removed')
+    return { ok: true }
+  })
+  // The setup screen's third choice: no subscription, everything bills a Console key.
+  handle('auth:useApiKey', async (raw: string) => {
+    const c = cleanConsoleKey(raw)
+    if ('error' in c) return { ok: false, error: c.error }
+    const check = process.env.LOCALCLAUDE_FAKE_AGENT ? { ok: true as const } : await checkConsoleKey(c.key)
+    if (!check.ok) return check
+    store.setConsoleKey(c.key)
+    setSavedConsoleKey(c.key)
+    store.setSettings({ signInMethod: 'apiKey', chatBilling: 'apiKey' })
+    setApiKeyOnly(true)
+    manager.restartAllSoon()
+    log('info', 'signed in with a Console API key only')
+    return { ok: true, warning: 'warning' in check ? check.warning : undefined }
+  })
+  handle('auth:login', () => {
+    if (win) startLogin(win)
+  })
   handle('auth:loginInput', (text: string) => sendLoginInput(text))
   handle('auth:cancelLogin', () => cancelLogin())
+  // Sign out of whatever signs you in: the Console key (key-only), a saved token, or Claude Code's login.
   handle('auth:logout', async () => {
     manager.shutdownAll()
-    await logout()
+    const method = store.getSettings().signInMethod
+    if (method === 'apiKey') {
+      store.setConsoleKey(undefined)
+      setSavedConsoleKey(undefined)
+      setApiKeyOnly(false)
+    } else if (store.getOAuthToken()) {
+      store.setOAuthToken(undefined)
+      setSavedOAuthToken(undefined)
+    } else await logout()
+    if (process.env.LOCALCLAUDE_FAKE_AGENT) setFakeSignedIn(false)
+    store.setSettings({ signInMethod: '' })
   })
+
+  // ---- mods
+  handle('mods:list', () => listMods())
+  handle('mods:openFolder', () => openModsFolder())
+  handle('mods:createExample', () => createExampleMod())
 
   // ---- settings
   handle('settings:get', () => store.getSettings())
   handle('settings:set', (patch: Partial<AppSettings>) => {
+    // how you sign in changes only through the sign-in handlers above
+    patch = { ...patch }
+    delete patch.signInMethod
+    if (patch.appearance) patch.appearance = normalizeAppearance(patch.appearance)
     const before = store.getSettings()
     const s = store.setSettings(patch)
     nativeTheme.themeSource = s.theme
@@ -632,9 +720,11 @@ function registerIpc(): void {
   // The page tells us its theme so the native window buttons match the top bar.
   handle(
     'window:theme',
-    (dark: boolean) => {
+    (dark: boolean, colors?: { color?: string; symbolColor?: string }) => {
       try {
-        win?.setTitleBarOverlay(titleBarColors(dark))
+        const c = titleBarColors(dark)
+        const ok = (v?: string): v is string => typeof v === 'string' && /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\))$/i.test(v)
+        win?.setTitleBarOverlay({ ...c, ...(ok(colors?.color) ? { color: colors.color } : {}), ...(ok(colors?.symbolColor) ? { symbolColor: colors.symbolColor } : {}) })
       } catch {
         /* not supported on this platform */
       }
@@ -798,7 +888,11 @@ const UI_ONLY_SETTINGS = new Set<keyof AppSettings>([
   'obsidianSyncChats',
   'obsidianSyncMemory',
   'remoteSpawn',
-  'remotePermissionMode'
+  'remotePermissionMode',
+  'appearance',
+  'keybindings',
+  'mods',
+  'signInMethod'
 ])
 
 function bringToFront(): void {
@@ -846,7 +940,11 @@ app.whenReady().then(() => {
   log('info', `LocalClaude ${app.getVersion()} starting (Electron ${process.versions.electron}, ${process.platform} ${process.arch})`)
   store.open()
   if (!store.lock.ok) log('warn', 'data locked:', store.lock.reason ?? '')
-  else setSavedConsoleKey(store.getConsoleKey())
+  else {
+    setSavedConsoleKey(store.getConsoleKey())
+    setSavedOAuthToken(store.getOAuthToken())
+    setApiKeyOnly(store.getSettings().signInMethod === 'apiKey')
+  }
   if (store.lock.ok) nativeTheme.themeSource = store.getSettings().theme
   manager = new SessionManager(
     store,
@@ -882,6 +980,7 @@ app.whenReady().then(() => {
   registerIpc()
   serveArtifacts()
   serveImages()
+  protocol.handle('lcmod', (req) => serveModFile(req.url, (id) => store.lock.ok && !!store.getSettings().mods?.[id]))
   createWindow()
   if (store.lock.ok) applyQuickShortcut(store.getSettings().quickShortcut)
   if (!TEST_MODE) scheduleBackups()

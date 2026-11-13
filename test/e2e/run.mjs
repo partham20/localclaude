@@ -7,7 +7,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { steps } from './steps.mjs'
+
+// Two suites: the app as you use it (signed in), and 1.4's setup screen, themes and mods (signed out, LOCALCLAUDE_E2E_SUITE=setup).
+const SUITE = process.env.LOCALCLAUDE_E2E_SUITE === 'setup' ? 'setup' : 'main'
+const { steps } = await import(SUITE === 'setup' ? './setup-steps.mjs' : './steps.mjs')
 
 const work = mkdtempSync(join(tmpdir(), 'lc-e2e-'))
 process.env.LOCALCLAUDE_USER_DATA = join(work, 'profile')
@@ -17,6 +20,8 @@ process.env.LOCALCLAUDE_TEST_MODE = '1'
 process.env.LOCALCLAUDE_OBSIDIAN_CONFIG = join(work, 'obsidian.json')
 // Claude Code's settings (folder trust) for Remote Control: a throwaway copy, not yours
 process.env.LOCALCLAUDE_CLAUDE_CONFIG = join(work, 'claude-config.json')
+process.env.LOCALCLAUDE_MODS_DIR = join(work, 'mods')
+if (SUITE === 'setup') process.env.LOCALCLAUDE_FAKE_SIGNED_OUT = '1'
 
 // File dialogs take their answers from this queue, in order.
 const answers = []

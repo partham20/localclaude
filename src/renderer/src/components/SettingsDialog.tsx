@@ -1,24 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AppSettings, AuthStatus, LockStatus, MemoryItem } from '../../../shared/types'
+import type { AppSettings, AuthStatus, LockStatus, MemoryItem, ModInfo } from '../../../shared/types'
 import { api } from '../api'
-import { REPLY_FONTS, UI_FONTS } from '../fonts'
+import { AppearancePanel, KeyboardPanel, ModsPanel } from './Customize'
+import { Icon } from './Icon'
 import { BackupsPanel } from './Backups'
 import { McpManager } from './McpManager'
 import { MemoryList } from './Memory'
 import { ObsidianPanel } from './ObsidianPanel'
 import { billsConsoleKey } from '../../../shared/billing'
-import { ConsoleKeySettings, SignOut } from './Billing'
+import { ConsoleKeySettings, OAuthTokenSettings, SignOut } from './Billing'
 import { ShortcutField, StylesEditor, UsagePanel } from './SettingsExtras'
 
-const TABS: [string, string][] = [
-  ['general', 'General'],
-  ['tools', 'Tools & computer'],
-  ['memory', 'Memory & data'],
-  ['obsidian', 'Obsidian'],
-  ['backups', 'Backups'],
-  ['usage', 'Usage'],
-  ['account', 'Account & privacy'],
-  ['about', 'About']
+const TABS: [string, string, string][] = [
+  ['general', 'General', 'settings'],
+  ['appearance', 'Appearance', 'palette'],
+  ['keyboard', 'Keyboard', 'keyboard'],
+  ['mods', 'Mods', 'puzzle'],
+  ['tools', 'Tools & computer', 'monitor'],
+  ['memory', 'Memory & data', 'memory'],
+  ['obsidian', 'Obsidian', 'file'],
+  ['backups', 'Backups', 'upload'],
+  ['usage', 'Usage', 'sliders'],
+  ['account', 'Account & privacy', 'key'],
+  ['about', 'About', 'question']
 ]
 
 export function SettingsDialog(props: {
@@ -35,6 +39,8 @@ export function SettingsDialog(props: {
   onGlobalMemory: (items: MemoryItem[]) => void
   onExportAll: () => void
   onImport: () => void
+  mods: ModInfo[]
+  onReloadMods: () => Promise<void>
 }) {
   const s = props.settings
   const consoleKey = billsConsoleKey(props.auth, s)
@@ -74,8 +80,9 @@ export function SettingsDialog(props: {
       <div className="modal">
         <nav className="modal-nav">
           <div className="modal-heading">Settings</div>
-          {TABS.map(([k, label]) => (
-            <button key={k} className={'nav-item' + (props.tab === k ? ' active' : '')} onClick={() => props.onTab(k)}>
+          {TABS.map(([k, label, icon]) => (
+            <button key={k} className={'nav-item' + (props.tab === k ? ' active' : '')} onClick={() => props.onTab(k)} data-tab={k}>
+              <Icon name={icon} size={15} />
               {label}
             </button>
           ))}
@@ -157,38 +164,18 @@ export function SettingsDialog(props: {
                 </select>
               </div>
               <div className="field">
-                <label>Theme</label>
-                <select className="select" value={s.theme} onChange={(e) => void props.onChange({ theme: e.target.value as AppSettings['theme'] })}>
-                  <option value="system">Match system</option>
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                </select>
-              </div>
-              <div className="field">
-                <label>Fonts</label>
-                <div className="font-grid">
-                  <span className="muted small">Claude's replies</span>
-                  <select className="select" value={s.replyFont} onChange={(e) => void props.onChange({ replyFont: e.target.value as AppSettings['replyFont'] })}>
-                    {REPLY_FONTS.map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="muted small">Interface and your messages</span>
-                  <select className="select" value={s.uiFont} onChange={(e) => void props.onChange({ uiFont: e.target.value as AppSettings['uiFont'] })}>
-                    {UI_FONTS.map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="font-preview">
-                  <div className="font-preview-user">Can you explain what this function does?</div>
-                  <div className="font-preview-reply">
-                    It reads the config file, checks each entry, and returns the <b>first valid server</b> it finds, or <i>null</i> if none match.
-                  </div>
+                <label>Look and feel</label>
+                <p className="muted small">Themes, colors, fonts, sizes and your own CSS are in Appearance; shortcuts in Keyboard; and Mods can change anything else.</p>
+                <div className="row gap">
+                  <button className="btn" onClick={() => props.onTab('appearance')}>
+                    <Icon name="palette" size={15} /> Appearance
+                  </button>
+                  <button className="btn ghost" onClick={() => props.onTab('keyboard')}>
+                    <Icon name="keyboard" size={15} /> Keyboard
+                  </button>
+                  <button className="btn ghost" onClick={() => props.onTab('mods')}>
+                    <Icon name="puzzle" size={15} /> Mods
+                  </button>
                 </div>
               </div>
               <div className="field">
@@ -221,6 +208,10 @@ export function SettingsDialog(props: {
               <ShortcutField settings={s} onChange={props.onChange} />
             </>
           )}
+
+          {props.tab === 'appearance' && <AppearancePanel settings={s} onChange={props.onChange} />}
+          {props.tab === 'keyboard' && <KeyboardPanel settings={s} onChange={props.onChange} />}
+          {props.tab === 'mods' && <ModsPanel settings={s} onChange={props.onChange} mods={props.mods} onReload={props.onReloadMods} />}
 
           {props.tab === 'usage' && (
             <>
@@ -369,7 +360,7 @@ export function SettingsDialog(props: {
                   <span>Plan</span>
                   <span>{props.auth.subscriptionType ?? 'Claude subscription'}</span>
                   <span>Sign-in</span>
-                  <span>{props.auth.usingOAuthTokenEnv ? 'Subscription token (CLAUDE_CODE_OAUTH_TOKEN)' : (props.auth.authMethod ?? '—')}</span>
+                  <span>{signInLabel(props.auth)}</span>
                 </div>
                 {props.auth.usingApiKeyEnv && (
                   <p className="notice">
@@ -379,6 +370,20 @@ export function SettingsDialog(props: {
                 )}
                 <SignOut auth={props.auth} onLogout={() => void props.onLogout()} />
               </div>
+              {!props.auth.apiKeyOnly && (
+                <OAuthTokenSettings
+                  auth={props.auth}
+                  onSave={async (t) => {
+                    const r = await api.saveOAuthToken(t)
+                    if (r.ok) await props.onAuthChanged()
+                    return r
+                  }}
+                  onRemove={async () => {
+                    await api.removeOAuthToken()
+                    await props.onAuthChanged()
+                  }}
+                />
+              )}
               <ConsoleKeySettings
                 auth={props.auth}
                 settings={s}
@@ -451,4 +456,13 @@ export function SettingsDialog(props: {
       </div>
     </div>
   )
+}
+
+/** How you're signed in, in words. */
+function signInLabel(auth: AuthStatus): string {
+  if (auth.apiKeyOnly) return 'Console API key only'
+  if (auth.usingOAuthTokenEnv) return 'Subscription token (CLAUDE_CODE_OAUTH_TOKEN)'
+  if (auth.oauthTokenSaved) return 'Subscription token (saved in LocalClaude)'
+  if (auth.authMethod === 'claude.ai') return 'Claude subscription (browser sign-in)'
+  return auth.authMethod ?? '—'
 }

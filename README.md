@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/partham20/localclaude/actions/workflows/ci.yml/badge.svg)](https://github.com/partham20/localclaude/actions/workflows/ci.yml)
 
-A personal desktop app for Claude on **Windows and Linux**, powered by **Claude Code** through the official Claude Agent SDK, running on **your Claude subscription** (Pro / Max). No API key, no pay-per-token billing.
+A personal desktop app for Claude on **Windows and Linux**, powered by **Claude Code** through the official Claude Agent SDK, running on **your Claude subscription** (Pro / Max), a subscription token, or a Console API key if you'd rather pay as you go.
 
 Everything runs and is stored **on this machine only**. Chats, settings and MCP config are encrypted with a key bound to this computer's machine ID, so copying the data folder to another PC won't open it, and nothing syncs to claude.ai.
 
@@ -46,12 +46,15 @@ Everything runs and is stored **on this machine only**. Chats, settings and MCP 
 | Notifications & titles | A notification when Claude finishes or needs you while the app is in the background; new chats get a short AI-written title |
 | Quick access | A global shortcut (Ctrl+Alt+Space by default) brings LocalClaude forward with a new chat; the window remembers its size and place; right-click menus for copy, paste, spelling and links |
 | Personal instructions | Settings → General: what Claude should call you (also shown in the sidebar), and instructions added to every chat |
-| Light / dark theme | Follows system or forced |
+| First-run setup | A setup screen with three ways to sign in: your Claude subscription in the browser, a token from `claude setup-token`, or a Console API key. Then pick a theme and accent. Tokens and keys are stored encrypted and locked to your OS account by the system keychain |
+| Make it yours | **Settings → Appearance:** light/dark/system, 9 themes, any accent, every single color, interface/reply/code fonts (or any installed font), zoom, reply size, chat width, density, corners, frosted glass, glow, animations, message style and your own CSS; copy your look to another computer. **Settings → Keyboard:** rebind every shortcut. See [MODS.md](MODS.md) |
+| Command palette | **Ctrl+K**: every action, settings page, theme and chat in one search, plus commands mods add |
+| Mods | Folders of CSS, themes and scripts in your mods folder, switched on in **Settings → Mods**. Scripts can add commands, shortcuts, sidebar buttons and status items, react to chats, and change settings. The example mod shows how; [MODS.md](MODS.md) is the guide |
 
 ## Requirements
 
 - **Node.js 22+** and npm (only to build it)
-- A **Claude Pro or Max** subscription
+- A **Claude Pro or Max** subscription (or a Console API key)
 - Windows 10/11 x64, or a Linux desktop (glibc, x64)
 
 Claude Code itself is bundled; `npm install` downloads the right native binary for your OS.
@@ -63,7 +66,13 @@ npm install
 npm run dev
 ```
 
-On first launch, click **Sign in with Claude**. A browser opens to the Claude sign-in page; approve it (if the page shows a code, paste it into the app). If you already use `claude` in a terminal, you're already signed in; the login is shared.
+On first launch, a setup screen asks how to sign in:
+
+- **Claude subscription** (recommended): a browser opens to the Claude sign-in page; approve it (if the page shows a code, paste it into the app). If you already use `claude` in a terminal, you're already signed in; the login is shared, so choose *check again*.
+- **Auth token**: paste a token from `claude setup-token` (details below). Good for a computer that can't open a browser.
+- **Console API key**: paste a key from the Anthropic Console. Everything then bills that key; no subscription needed (Remote Control and plan usage need one, so they're off).
+
+Tokens and keys are kept in LocalClaude's encrypted store (AES-256 with a machine-bound key, plus Electron safeStorage: Windows DPAPI, the macOS Keychain, or the Linux Secret Service), never sent back to the window, and left out of exports and backups. Then pick a theme and an accent; everything else is in Settings → Appearance.
 
 ## Sign in with a subscription token instead
 
@@ -77,7 +86,9 @@ claude setup-token
 
 It opens the browser once to confirm, then prints a token that starts with `sk-ant-oat01-`. Copy it. It's a password for your subscription: don't share it, commit it, or paste it into chats.
 
-**2. Set it on the machine that runs LocalClaude.**
+**2. Give it to LocalClaude.** The easy way: choose **Auth token** on the setup screen (or Settings → Account & privacy → Subscription token) and paste it. It's stored encrypted and **Sign out** removes it.
+
+Or set it as an environment variable on the machine that runs LocalClaude (it wins over a pasted token):
 
 **Windows** (Command Prompt or PowerShell):
 
@@ -188,6 +199,7 @@ Anthropic currently lets the Agent SDK use your subscription's normal usage limi
 
 ## Tips
 
+- **Ctrl+K** command palette · **Ctrl+Shift+,** appearance · **Ctrl+Shift+L** light/dark · every shortcut can be changed in Settings → Keyboard
 - **Ctrl+N** new chat · **Ctrl+,** settings · **Enter** send · **Shift+Enter** newline · **Esc** stop
 - Like Claude Code: **Shift+Tab** cycles Ask → Auto-accept edits → Plan · **Esc Esc** opens rewind · **Ctrl+O** toggles Verbose · `/` lists commands with descriptions
 - Rewind restores files Claude changed with its edit tools. Changes made by shell commands (e.g. `rm`, `git`) aren't tracked, same as in Claude Code.
@@ -205,13 +217,16 @@ npm test           # unit tests (LOCALCLAUDE_E2E=1 also sends one real message t
 npm run test:e2e   # builds the app and clicks through it with a scripted Claude
 ```
 
+`test:e2e` runs two suites: the app signed in, then the setup screen, Appearance, Keyboard, the command palette and the example mod (signed out, `node test/e2e/launch.mjs --setup` runs just that one).
+
 The end-to-end tests run the real app (main process, preload and UI) with a stand-in for Claude Code that speaks the same protocol, in a throwaway profile, so they need no account or network. Set `LOCALCLAUDE_E2E_SHOTS=folder` to save screenshots. CI runs both on Windows and Linux.
 
 ## Project layout
 
 ```
 src/main/agent.ts       Agent SDK sessions → UI events, permissions, interrupt, resume
-src/main/claude.ts      bundled binary lookup, subscription-only env, sign-in
+src/main/claude.ts      bundled binary lookup, subscription-only env, sign-in (browser, token, key)
+src/main/mods.ts        the mods folder: reading mod.json, CSS and themes, serving scripts (lcmod://)
 src/main/computer.ts    computer-use MCP tool (screenshots, mouse, keyboard)
 src/main/store.ts       encrypted, machine-bound storage
 src/main/index.ts       window + IPC
@@ -231,6 +246,8 @@ src/main/mcpCheck.ts    testing MCP servers from Settings
 src/main/fakeAgent.ts   the scripted Claude used by the end-to-end tests
 src/preload/            safe bridge (contextIsolation + sandbox)
 src/shared/             types + the chat reducer used by both processes
+src/shared/customize.ts themes, colors, keyboard shortcuts, mod manifests
+src/renderer/src/mods/  runs mods in the window and gives their scripts the API
 src/renderer/           React UI (styles/ holds the stylesheets, in cascade order)
 test/                   unit tests; test/e2e/ end-to-end tests
 ```

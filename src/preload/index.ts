@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron'
 import type {
   AgentEvent,
   AppSettings,
@@ -22,6 +22,7 @@ import type {
   GitStatus,
   ImportResult,
   MemoryItem,
+  ModInfo,
   ObsidianVault,
   PlanUsage,
   Project,
@@ -61,6 +62,9 @@ const api = {
   /** save a Console API key (checked in the main process; it's never sent back) */
   saveConsoleKey: (key: string) => inv<{ ok: boolean; error?: string; warning?: string }>('consoleKey:save', key),
   removeConsoleKey: () => inv<{ ok: boolean }>('consoleKey:remove'),
+  saveOAuthToken: (token: string) => inv<{ ok: boolean; error?: string }>('oauthToken:save', token),
+  removeOAuthToken: () => inv<{ ok: boolean }>('oauthToken:remove'),
+  useApiKey: (key: string) => inv<{ ok: boolean; error?: string; warning?: string }>('auth:useApiKey', key),
   onLogin: (cb: (e: LoginEvent) => void) => on<LoginEvent>('login:event', cb),
 
   getSettings: () => inv<AppSettings>('settings:get'),
@@ -108,7 +112,12 @@ const api = {
   testMcpServer: (entry: McpServerEntry) => inv<McpTestResult>('mcp:test', entry),
   createWorktree: (sessionId: string, name: string) => inv<SessionMeta>('git:worktree', sessionId, name),
   openInEditor: (path: string) => inv<void>('files:openInEditor', path),
-  setWindowTheme: (dark: boolean) => inv<void>('window:theme', dark),
+  setWindowTheme: (dark: boolean, colors?: { color?: string; symbolColor?: string }) => inv<void>('window:theme', dark, colors),
+  /** whole-window zoom (Settings → Appearance) */
+  setZoom: (factor: number) => webFrame.setZoomFactor(Math.min(1.4, Math.max(0.8, Number(factor) || 1))),
+  listMods: () => inv<ModInfo[]>('mods:list'),
+  openModsFolder: () => inv<string>('mods:openFolder'),
+  createExampleMod: () => inv<string>('mods:createExample'),
 
   listArtifacts: (sessionId: string) => inv<Artifact[]>('artifacts:list', sessionId),
   saveArtifact: (sessionId: string, artifactId: string, version: number) => inv<boolean>('artifacts:save', sessionId, artifactId, version),
