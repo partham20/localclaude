@@ -631,6 +631,9 @@ export default function App() {
       ['keyboard', 'Keyboard shortcuts', 'keyboard'],
       ['mods', 'Mods', 'puzzle'],
       ['tools', 'Tools & computer', 'monitor'],
+      ['skills', 'Skills', 'sparkle'],
+      ['plugins', 'Plugins', 'grid'],
+      ['connectors', 'Connectors (MCP servers)', 'plug'],
       ['memory', 'Memory & data', 'memory'],
       ['account', 'Account & sign-in', 'key'],
       ['usage', 'Usage', 'sliders']

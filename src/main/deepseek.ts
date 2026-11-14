@@ -5,6 +5,8 @@
 // dsh needs Node 24.9+, which Electron itself ships, so when dsh's entry file can be found it runs
 // on LocalClaude's own runtime (ELECTRON_RUN_AS_NODE) and no separate Node is needed to run it.
 import type * as acp from '@agentclientprotocol/sdk'
+import { enabledPluginMcpServers, skillsForChat, skillsPreamble } from './extensions'
+import { withMcpAuth } from './mcpAuth'
 import { app } from 'electron'
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -420,8 +422,12 @@ export class DeepSeekSession {
   // ---------------------------------------------------------------- lifecycle
   private mcpServers(): (acp.McpServerStdio | (acp.McpServerHttp & { type: 'http' }))[] {
     const out: (acp.McpServerStdio | (acp.McpServerHttp & { type: 'http' }))[] = []
-    for (const [name, cfg] of Object.entries(this.settings().mcpServers)) {
-      if (cfg.enabled === false) continue
+    const s = this.settings()
+    // your servers, then the ones enabled plugins bring (Claude Code chats get those from Claude Code itself)
+    const servers = { ...(s.loadUserSettings ? enabledPluginMcpServers() : {}), ...s.mcpServers }
+    for (const [name, raw] of Object.entries(servers)) {
+      if (raw.enabled === false) continue
+      const cfg = withMcpAuth(this.store, raw)
       if (cfg.type === 'http' && cfg.url)
         out.push({ type: 'http', name, url: cfg.url, headers: Object.entries(cfg.headers ?? {}).map(([n, value]) => ({ name: n, value })) })
       else if ((!cfg.type || cfg.type === 'stdio') && cfg.command)
@@ -616,7 +622,9 @@ export class DeepSeekSession {
     const parts = [
       s.userName?.trim() ? `The user's name is ${s.userName.trim()}.` : '',
       s.appendSystemPrompt?.trim() ?? '',
-      project?.instructions?.trim() ? `Instructions for the project “${project.name}”:\n${project.instructions.trim()}` : ''
+      project?.instructions?.trim() ? `Instructions for the project “${project.name}”:\n${project.instructions.trim()}` : '',
+      // DeepSeek Harness has no skills of its own: tell it what yours are for and where they are
+      skillsPreamble(skillsForChat(s, this.meta.cwd))
     ].filter(Boolean)
     return parts.length ? `<context>\n${parts.join('\n\n')}\n</context>` : ''
   }

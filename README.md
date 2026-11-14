@@ -37,9 +37,12 @@ Everything runs and is stored **on this machine only**. Chats, settings and MCP 
 | Working folders | Pick a folder per chat, add extra folders anytime |
 | Attachments | Images (paste, drag-drop, 📎) go to Claude; other files are attached as `@path` mentions |
 | Slash commands & skills | Type `/` for your commands and skills (from `~/.claude` and the project's `.claude/`) |
-| Browser | Toggle "Use my Chrome browser" (Claude in Chrome extension), or add the Playwright MCP preset |
+| Skills | Settings → Skills lists your skills, the default folder's and plugins'. Switch any off for LocalClaude chats, write or edit one, or add one from a folder or a `.zip` / `.skill` file |
+| Plugins | Settings → Plugins: browse Claude Code's plugin directory and any marketplace you add (GitHub repo, git URL or folder), install, switch on and off, update and uninstall, all through Claude Code's own `claude plugin` commands |
+| Connectors | Settings → Connectors: popular connectors (Notion, Linear, Sentry, Atlassian, GitHub, Context7 and more) in one click, **Sign in** in the browser for servers that use OAuth (tokens kept encrypted and refreshed), and copy servers Claude Code already has |
+| Browser | Toggle "Use my Chrome browser" (Claude in Chrome extension), or add the Playwright connector |
 | MCP panel | Click "MCP n/m" in the status line for live server status, on/off switches and reconnect |
-| MCP servers | Add, edit, test and switch off servers in Settings → Tools (or edit them as JSON); your `~/.claude.json` servers load too |
+| MCP servers | Add, edit, test and switch off servers in Settings → Connectors (or edit them as JSON); your `~/.claude.json` servers load too |
 | Chat history | Searchable sidebar, rename, delete, resume any chat later |
 | Model & effort | Opus / Sonnet / Haiku (or whatever your plan lists), effort level |
 | Usage | Status line shows your plan's 5-hour window usage and reset time; Settings → Usage shows every limit (labelled as subscription usage while chats bill a Console key) |
@@ -200,7 +203,7 @@ How it works: each open DeepSeek chat starts `dsh --profile acp` and talks to it
 - **Billing:** DeepSeek chats bill your DeepSeek account, never your Claude plan.
 - **Models and reasoning:** the model menu lists dsh's own models (V4 Flash, V4 Pro…) and its reasoning levels (Off, Low, High, Max).
 - **Permissions:** dsh runs tools in its own sandbox. *Ask permissions*, *Auto-accept edits* and *Auto* keep writes inside the chat's folder and ask before stepping outside it; *Plan mode* is read-only; *Full access* lifts the sandbox.
-- **Your MCP servers** (stdio and HTTP) are passed to dsh too. Your name, custom instructions and the project's instructions go with the first message.
+- **Your MCP servers** (stdio and HTTP, with the token of a connector you signed in to) are passed to dsh too, and so are the MCP servers of enabled plugins. Your name, custom instructions, the project's instructions and the list of your skills that are on (what each is for and where its `SKILL.md` is) go with the first message, so DeepSeek reads a skill when a task matches it. Plugins' slash commands, agents and hooks are Claude Code features and stay in Claude Code chats.
 - **Switching harness** keeps the chat. The new harness gets the earlier messages as context with your next message; rewind points from before the switch go away.
 - **Not available in DeepSeek chats yet:** rewind, images, artifacts, memory and chat search (those are LocalClaude tools built for Claude Code). Designs always use Claude Code.
 

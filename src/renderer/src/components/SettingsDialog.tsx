@@ -5,7 +5,9 @@ import { AppearancePanel, KeyboardPanel, ModsPanel } from './Customize'
 import { Icon } from './Icon'
 import { Avatar, pickAvatar } from './Avatar'
 import { BackupsPanel } from './Backups'
-import { McpManager } from './McpManager'
+import { ConnectorsPanel } from './ConnectorsPanel'
+import { PluginsPanel } from './PluginsPanel'
+import { SkillsPanel } from './SkillsPanel'
 import { MemoryList } from './Memory'
 import { ObsidianPanel } from './ObsidianPanel'
 import { billsConsoleKey } from '../../../shared/billing'
@@ -19,6 +21,9 @@ const TABS: [string, string, string][] = [
   ['keyboard', 'Keyboard', 'keyboard'],
   ['mods', 'Mods', 'puzzle'],
   ['tools', 'Tools & computer', 'monitor'],
+  ['skills', 'Skills', 'sparkle'],
+  ['plugins', 'Plugins', 'grid'],
+  ['connectors', 'Connectors', 'plug'],
   ['memory', 'Memory & data', 'memory'],
   ['obsidian', 'Obsidian', 'file'],
   ['backups', 'Backups', 'upload'],
@@ -306,8 +311,9 @@ export function SettingsDialog(props: {
                   </span>
                 </span>
               </label>
-              <McpManager settings={s} onChange={props.onChange} />
-              <p className="muted small">Changes apply to each chat the next time you send a message.</p>
+              <p className="muted small">
+                Connectors (MCP servers), skills and plugins have their own pages. Changes apply to each chat the next time you send a message.
+              </p>
             </>
           )}
 
@@ -377,6 +383,9 @@ export function SettingsDialog(props: {
             </>
           )}
 
+          {props.tab === 'skills' && <SkillsPanel settings={s} onChange={props.onChange} />}
+          {props.tab === 'plugins' && <PluginsPanel settings={s} />}
+          {props.tab === 'connectors' && <ConnectorsPanel settings={s} onChange={props.onChange} />}
           {props.tab === 'obsidian' && <ObsidianPanel settings={s} onChange={props.onChange} />}
           {props.tab === 'backups' && <BackupsPanel settings={s} onChange={props.onChange} onRestore={props.onImport} />}
 

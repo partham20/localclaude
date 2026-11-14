@@ -1,21 +1,11 @@
 // Settings → MCP servers: add, edit, switch off and test the servers Claude can use, or edit them as JSON.
 import { useEffect, useState } from 'react'
+import type { McpAuthInfo } from '../../../shared/extensions'
 import type { AppSettings, McpServerEntry, McpTestResult } from '../../../shared/types'
 import { api } from '../api'
 
-const PRESETS: Record<string, { label: string; entry: McpServerEntry }> = {
-  playwright: {
-    label: 'Playwright browser',
-    entry: { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest'], enabled: true }
-  },
-  filesystem: {
-    label: 'Filesystem',
-    entry: { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'], enabled: true }
-  }
-}
-
 /** Names LocalClaude's own servers use. */
-const RESERVED = ['artifacts', 'memory', 'chats', 'knowledge', 'computer-use']
+export const RESERVED = ['artifacts', 'memory', 'chats', 'knowledge', 'computer-use']
 
 type Kind = 'stdio' | 'http' | 'sse'
 const KIND_LABEL: Record<Kind, string> = { stdio: 'Local command', http: 'Remote (HTTP)', sse: 'Remote (SSE)' }
@@ -230,7 +220,34 @@ function JsonEditor({ settings, onChange }: { settings: AppSettings; onChange: (
   )
 }
 
-export function McpManager({ settings, onChange }: { settings: AppSettings; onChange: (p: Partial<AppSettings>) => Promise<void> }) {
+const authKey = (url: string): string => {
+  try {
+    const u = new URL(url)
+    u.hash = ''
+    return u.href
+  } catch {
+    return url
+  }
+}
+
+export function McpManager({
+  settings,
+  onChange,
+  auth,
+  signingIn,
+  onSignIn,
+  onSignOut
+}: {
+  settings: AppSettings
+  onChange: (p: Partial<AppSettings>) => Promise<void>
+  /** connectors you're signed in to */
+  auth: McpAuthInfo[]
+  /** the URL a sign-in is waiting on */
+  signingIn: string | null
+  onSignIn: (url: string) => void
+  onSignOut: (url: string) => void
+}) {
+  const signedIn = new Set(auth.map((a) => a.url))
   const servers = settings.mcpServers
   const [draft, setDraft] = useState<Draft | null>(null)
   const [results, setResults] = useState<Record<string, McpTestResult | 'testing'>>({})
@@ -240,9 +257,9 @@ export function McpManager({ settings, onChange }: { settings: AppSettings; onCh
 
   return (
     <div className="field mcp-manager">
-      <label>MCP servers (this app only)</label>
+      <label>Your connectors (MCP servers)</label>
       <p className="muted small">
-        Connect Claude to other tools and data. Servers in your <code>~/.claude.json</code> also load when “user settings” is on.
+        LocalClaude’s own list: Claude Code and DeepSeek chats both use these. Servers in your <code>~/.claude.json</code> also load in Claude Code chats when “user settings” is on.
       </p>
       {json ? (
         <JsonEditor settings={settings} onChange={onChange} />
@@ -265,6 +282,21 @@ export function McpManager({ settings, onChange }: { settings: AppSettings; onCh
                       <span className="mcp-summary muted small mono" title={summary(e)}>
                         {summary(e)}
                       </span>
+                      {(e.type === 'http' || e.type === 'sse') && e.url && (signedIn.has(authKey(e.url)) ? (
+                        <button className="btn ghost small ok-text" title="Signed in. Click to sign out." name="signOut" onClick={() => onSignOut(e.url!)}>
+                          Signed in ✓
+                        </button>
+                      ) : (
+                        <button
+                          className={'btn small ' + (r && r !== 'testing' && r.needsAuth ? 'primary' : 'ghost')}
+                          name="signIn"
+                          disabled={signingIn === authKey(e.url)}
+                          title="Sign in in your browser (for servers that use OAuth)"
+                          onClick={() => onSignIn(e.url!)}
+                        >
+                          {signingIn === authKey(e.url) ? 'Waiting for the browser…' : 'Sign in'}
+                        </button>
+                      ))}
                       <button
                         className="btn ghost small"
                         title="Test: connect and list its tools"
@@ -322,13 +354,6 @@ export function McpManager({ settings, onChange }: { settings: AppSettings; onCh
               <button className="btn" onClick={() => setDraft(toDraft(null, { type: 'stdio' }))}>
                 ＋ Add a server
               </button>
-              {Object.entries(PRESETS)
-                .filter(([key]) => !servers[key])
-                .map(([key, p]) => (
-                  <button key={key} className="btn ghost" title={summary(p.entry)} onClick={() => void save({ ...servers, [key]: p.entry })}>
-                    ＋ {p.label}
-                  </button>
-                ))}
             </div>
           )}
         </>

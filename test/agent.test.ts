@@ -12,6 +12,9 @@ import { MEMORY_TOOLS, addMemory, createMemoryServer, editMemory, getMemory, rem
 import { createZip, readZip } from '../src/main/zip'
 import { branchName, createWorktree, gitStatus } from '../src/main/git'
 import { testMcpServer } from '../src/main/mcpCheck'
+import { claudeCodeMcpServers, enabledPluginMcpServers, importSkill, installedPlugins, listSkills, saveSkill, skillOverrides, skillsForChat, skillsPreamble } from '../src/main/extensions'
+import { withMcpAuth } from '../src/main/mcpAuth'
+import { formatSkillMd, parseSkillMd, skillNameError } from '../src/shared/extensions'
 import { addProjectDir, createProject, removeProjectDir, setProjectMainDir } from '../src/main/projects'
 import { RemoteControl, isFolderTrusted, readRemoteOutput, trustFolder } from '../src/main/remoteControl'
 import { fakeRemoteCommand } from '../src/main/fakeRemote'
@@ -33,7 +36,7 @@ import { resolveStyle } from '../src/shared/styles'
 import { DeepSeekSession, cleanDeepSeekKey, displayTool, dshPermissionMode, toolOutput } from '../src/main/deepseek'
 import { deepseekModelLabel } from '../src/shared/deepseek'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { DEFAULT_EXPORT_OPTIONS } from '../src/shared/types'
 import type { AgentEvent, ChatMessage, SessionMeta, AppSettings } from '../src/shared/types'
@@ -1113,6 +1116,126 @@ async function deepseekEngine() {
   console.log('✓ DeepSeek Harness: tools, sandbox modes, key check, a real ACP exchange, switching harness both ways')
 }
 
+/** Skills, plugins and connectors: what's found on disk, switched off, imported, and passed to both engines. */
+async function extensionsAndConnectors() {
+  // SKILL.md frontmatter: plain, quoted and folded values
+  const p1 = parseSkillMd('---\nname: pdf\ndescription: "Fill \\"forms\\""\nlicense: MIT\n---\n\nDo it.\n')
+  assert.equal(p1.name, 'pdf')
+  assert.equal(p1.description, 'Fill "forms"')
+  assert.equal(p1.body, 'Do it.\n')
+  assert.equal(parseSkillMd('---\ndescription: >\n  One\n  two.\nname: x\n---\nb').description, 'One two.')
+  assert.equal(parseSkillMd('no frontmatter').body, 'no frontmatter')
+  const round = parseSkillMd(formatSkillMd({ name: 'a', description: 'Say: "hi"\nthere', body: 'B' }, { license: 'MIT' }))
+  assert.deepEqual([round.name, round.description, round.meta.license, round.body.trim()], ['a', 'Say: "hi" there', 'MIT', 'B'])
+  assert.ok(skillNameError('Bad Name'))
+  assert.equal(skillNameError('release-notes'), undefined)
+
+  const root = mkdtempSync(join(tmpdir(), 'lc-ext-'))
+  const saved = { dir: process.env.CLAUDE_CONFIG_DIR, cfg: process.env.LOCALCLAUDE_CLAUDE_CONFIG }
+  process.env.CLAUDE_CONFIG_DIR = join(root, 'claude')
+  process.env.LOCALCLAUDE_CLAUDE_CONFIG = join(root, 'claude.json')
+  const cwd = join(root, 'proj')
+  const write = (f: string, d: string): void => {
+    mkdirSync(join(f, '..'), { recursive: true })
+    writeFileSync(f, d)
+  }
+  write(join(root, 'claude/skills/mine/SKILL.md'), '---\nname: mine\ndescription: My skill\n---\nx')
+  write(join(cwd, '.claude/skills/theirs/SKILL.md'), '---\nname: theirs\ndescription: Folder skill\n---\nx')
+  const plug = join(root, 'claude/plugins/cache/m/hello/1.0.0')
+  write(join(plug, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'hello', description: 'Says hello' }))
+  write(join(plug, 'skills/greet/SKILL.md'), '---\nname: greet\ndescription: Greet\n---\nx')
+  write(join(plug, '.mcp.json'), JSON.stringify({ mcpServers: { hi: { command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/hi.js'] } } }))
+  write(join(root, 'claude/plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'hello@m': [{ scope: 'user', installPath: plug, version: '1.0.0' }] } }))
+  write(join(root, 'claude/settings.json'), JSON.stringify({ enabledPlugins: { 'hello@m': true } }))
+  const base = { ...DEFAULT_SETTINGS, defaultCwd: cwd, loadUserSettings: true, loadProjectSettings: true, disabledSkills: ['theirs'] }
+  const skills = listSkills(base)
+  assert.deepEqual(skills.map((x) => `${x.source}:${x.id}:${x.enabled}`), ['user:mine:true', 'project:theirs:false', 'plugin:hello:greet:true'])
+  assert.equal(skills.find((x) => x.id === 'hello:greet')!.editable, false, "a plugin's skills come and go with it")
+  // your home folder's .claude is your user config, not a project's
+  assert.ok(!listSkills({ ...base, defaultCwd: homedir() }).some((x) => x.source === 'project'))
+  assert.deepEqual(skillOverrides(base), { theirs: 'off' })
+  assert.equal(skillOverrides({ disabledSkills: [] }), undefined)
+  assert.deepEqual(skillsForChat({ ...base, loadUserSettings: false }, cwd).map((x) => x.id), [], 'user skills off, and the only folder skill is switched off')
+  const pre = skillsPreamble(skillsForChat(base, cwd))
+  assert.match(pre, /- mine: My skill — .*mine[\\/]SKILL\.md/)
+  assert.match(pre, /- hello:greet: Greet/)
+  assert.equal(skillsPreamble([]), '')
+  assert.deepEqual(enabledPluginMcpServers(), { 'hello-hi': { command: 'node', args: [`${plug}/hi.js`] } }, '${CLAUDE_PLUGIN_ROOT} filled in')
+  const inst = installedPlugins()[0]
+  assert.deepEqual([inst.id, inst.enabled, inst.skills, inst.mcpServers], ['hello@m', true, ['greet'], ['hi']])
+
+  // create, rename and refuse
+  assert.equal(saveSkill({ name: 'new-one', description: 'D', body: 'B' }, base).ok, true)
+  assert.match(readFileSync(join(root, 'claude/skills/new-one/SKILL.md'), 'utf8'), /^---\nname: new-one\ndescription: "D"\n---\n\nB\n$/)
+  const renamed = saveSkill({ name: 'renamed', description: 'D2', body: 'B', dir: join(root, 'claude/skills/new-one') }, base)
+  assert.ok(renamed.ok && existsSync(join(root, 'claude/skills/renamed/SKILL.md')) && !existsSync(join(root, 'claude/skills/new-one')))
+  assert.ok(!saveSkill({ name: 'mine', description: 'D', body: '' }, base).ok, 'already there')
+  assert.ok(!saveSkill({ name: 'x', description: 'D', body: '', dir: plug }, base).ok, "a plugin's folder isn't yours to write")
+
+  // a .zip with the skill in a folder; a ../ entry stays out
+  const zip = join(root, 'tool.zip')
+  writeFileSync(
+    zip,
+    createZip([
+      { name: 'tool/SKILL.md', data: Buffer.from('---\nname: tool\ndescription: T\n---\nx') },
+      { name: 'tool/scripts/a.py', data: Buffer.from('print(1)') },
+      { name: 'tool/../../evil.txt', data: Buffer.from('no') }
+    ])
+  )
+  assert.deepEqual(importSkill(zip), { ok: true, name: 'tool' })
+  assert.ok(existsSync(join(root, 'claude/skills/tool/scripts/a.py')))
+  assert.ok(!existsSync(join(root, 'claude/evil.txt')) && !existsSync(join(root, 'evil.txt')))
+  const again = importSkill(zip)
+  assert.ok(!again.ok && again.exists === 'tool', 'asks before replacing')
+  assert.ok(importSkill(zip, true).ok)
+  assert.deepEqual(importSkill(join(cwd, '.claude/skills/theirs')), { ok: true, name: 'theirs' })
+
+  // MCP servers in Claude Code's config
+  writeFileSync(
+    process.env.LOCALCLAUDE_CLAUDE_CONFIG!,
+    JSON.stringify({ mcpServers: { a: { command: 'npx', args: ['x'] }, web: { url: 'https://e.com/mcp' } }, projects: { [cwd]: { mcpServers: { b: { type: 'sse', url: 'https://s.com' } } } } })
+  )
+  write(join(cwd, '.mcp.json'), JSON.stringify({ mcpServers: { c: { command: 'py' } } }))
+  const cc = claudeCodeMcpServers({ defaultCwd: cwd, mcpServers: { a: { command: 'npx' } } })
+  assert.deepEqual(
+    cc.map((x) => `${x.scope}:${x.name}:${x.entry.type}:${x.exists}`),
+    ['local:b:sse:false', 'project:c:stdio:false', 'user:a:stdio:true', 'user:web:http:false']
+  )
+
+  // a signed-in connector's token, as chats get it
+  const auth = { getMcpAuth: (u: string) => (u === 'https://e.com/mcp' ? { tokens: { access_token: 'T', token_type: 'Bearer' } } : undefined), setMcpAuth: () => {}, allMcpAuth: () => ({}) }
+  assert.deepEqual(withMcpAuth(auth, { type: 'http', url: 'https://e.com/mcp' }).headers, { Authorization: 'Bearer T' })
+  assert.deepEqual(withMcpAuth(auth, { type: 'http', url: 'https://e.com/mcp', headers: { authorization: 'mine' } }).headers, { authorization: 'mine' }, 'your own header wins')
+  assert.equal(withMcpAuth(auth, { command: 'x' }).headers, undefined)
+
+  // Claude Code chats: switched-off skills hidden, the token sent
+  const st: any = memStore()
+  st._s.settings = { ...st._s.settings, defaultCwd: cwd, disabledSkills: ['theirs'], mcpServers: { web: { type: 'http', url: 'https://e.com/mcp' } } }
+  st.getMcpAuth = auth.getMcpAuth
+  const m = new SessionManager(st, () => {}, { transcriptExists: () => true })
+  const chat = m.create(cwd)
+  const opts = (m as any).get(chat.id).buildOptions()
+  assert.deepEqual(opts.settings.skillOverrides, { theirs: 'off' })
+  assert.deepEqual(opts.mcpServers.web.headers, { Authorization: 'Bearer T' })
+  // DeepSeek chats: told about the skills, and get plugins' MCP servers and the token too
+  st._s.settings = { ...st._s.settings, loadUserSettings: true, defaultEngine: 'deepseek' }
+  const ds = m.create(cwd)
+  const session = (m as any).get(ds.id)
+  assert.ok(session instanceof DeepSeekSession)
+  assert.match(session.preamble(), /Skills you can use[\s\S]*- mine: My skill/)
+  const servers = session.mcpServers()
+  assert.ok(servers.some((x: any) => x.name === 'hello-hi' && x.command === 'node'))
+  assert.deepEqual(servers.find((x: any) => x.name === 'web').headers, [{ name: 'Authorization', value: 'Bearer T' }])
+  m.shutdownAll()
+
+  process.env.CLAUDE_CONFIG_DIR = saved.dir
+  if (!saved.dir) delete process.env.CLAUDE_CONFIG_DIR
+  process.env.LOCALCLAUDE_CLAUDE_CONFIG = saved.cfg
+  if (!saved.cfg) delete process.env.LOCALCLAUDE_CLAUDE_CONFIG
+  rmSync(root, { recursive: true, force: true })
+  console.log('✓ skills, plugins and connectors: found, switched off, imported safely, and passed to Claude Code and DeepSeek chats')
+}
+
 function yourName() {
   const st: any = memStore()
   st._s.settings.userName = '  Paartha '
@@ -1655,6 +1778,7 @@ await gitHelpers()
 await mcpServerCheck()
 projectFolders()
 yourName()
+await extensionsAndConnectors()
 designMode()
 streamingJson()
 await remoteControl()

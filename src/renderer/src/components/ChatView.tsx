@@ -899,7 +899,7 @@ export function ChatView(props: {
                   { key: 'manage', label: 'Create & edit styles…', onSelect: () => props.onOpenSettings('general') }
                 ]}
               />
-              {runtime.init && <McpButton sessionId={meta.id} servers={runtime.mcp} onOpenSettings={() => props.onOpenSettings('tools')} />}
+              {runtime.init && <McpButton sessionId={meta.id} servers={runtime.mcp} onOpenSettings={() => props.onOpenSettings('connectors')} />}
               <SessionBillingTag apiKeySource={runtime.init?.apiKeySource} expectKey={props.consoleKey} />
               <div className="grow" />
               <span className="disclaimer">{escHint ? 'Press Esc again to rewind' : deepseek ? 'DeepSeek is AI and can make mistakes.' : 'Claude is AI and can make mistakes.'}</span>

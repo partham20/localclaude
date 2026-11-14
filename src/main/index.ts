@@ -1,6 +1,6 @@
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, Notification, protocol, screen, shell } from 'electron'
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { basename, extname, join } from 'node:path'
+import { basename, dirname, extname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { artifactExt, safeFileName } from '../shared/format'
 import {
@@ -81,6 +81,9 @@ import { SecureStore } from './store'
 import { checkDeepSeekKey, cleanDeepSeekKey, deepseekKeySource, deepseekStatus, installDsh } from './deepseek'
 import type { Engine } from '../shared/types'
 import { createZip } from './zip'
+import { availablePlugins, claudeCodeMcpServers, claudeDir, deleteSkill, importSkill, listSkills, pluginAction, pluginState, readSkillFile, saveSkill } from './extensions'
+import { cancelMcpSignIn, mcpAuthInfo, refreshMcpTokens, signInMcp, signOutMcp, withMcpAuth } from './mcpAuth'
+import type { PluginAction, SkillDraft } from '../shared/extensions'
 import { isAvatarImage } from '../shared/avatar'
 
 // Artifact previews load from artifact://view/<chat>/<artifact>/<version> in a sandboxed frame;
@@ -730,7 +733,63 @@ function registerIpc(): void {
   handle('chat:setStyle', (id: string, style: string) => manager.setStyle(id, style))
   handle('chat:rewindPreview', (id: string, messageId: string) => manager.rewindPreview(id, messageId))
   handle('chat:rewind', (id: string, req: RewindRequest) => manager.rewind(id, req))
-  handle('mcp:test', (entry: McpServerEntry) => testMcpServer(entry, { cwd: store.getSettings().defaultCwd || undefined }))
+  handle('mcp:test', (entry: McpServerEntry) => testMcpServer(withMcpAuth(store, entry), { cwd: store.getSettings().defaultCwd || undefined }))
+  // ---- connectors: sign in to remote MCP servers, and the servers in Claude Code's own config
+  handle('mcp:signIn', async (url: string) => {
+    if (typeof url !== 'string' || !/^https?:\/\//.test(url)) return { ok: false, error: 'That server has no web address.' }
+    const r = await signInMcp(store, url)
+    if (r.ok) manager.restartIdle()
+    return r
+  })
+  handle('mcp:cancelSignIn', () => cancelMcpSignIn())
+  handle('mcp:signOut', (url: string) => {
+    signOutMcp(store, url)
+    manager.restartIdle()
+  })
+  handle('mcp:auth', () => mcpAuthInfo(store))
+  handle('mcp:claudeCode', () => claudeCodeMcpServers(store.getSettings()))
+  // ---- skills
+  handle('skills:list', () => listSkills(store.getSettings()))
+  handle('skills:read', (dir: string) => readSkillFile(dir))
+  handle('skills:save', (d: SkillDraft) => {
+    const r = saveSkill(d, store.getSettings())
+    if (r.ok) manager.restartIdle()
+    return r
+  })
+  handle('skills:delete', async (dir: string) => {
+    const r = await deleteSkill(dir, store.getSettings())
+    if (r.ok) manager.restartIdle()
+    return r
+  })
+  handle('skills:import', async (from: string | null, replace?: boolean) => {
+    if (!from) {
+      const pick = await dialog.showOpenDialog(win!, {
+        title: 'Add a skill: a folder with a SKILL.md, or a .zip or .skill file',
+        properties: ['openFile', 'openDirectory'],
+        filters: [{ name: 'Skill', extensions: ['zip', 'skill', 'md'] }]
+      })
+      if (pick.canceled || !pick.filePaths[0]) return null
+      from = pick.filePaths[0]
+    }
+    // a SKILL.md picked on its own: its folder is the skill
+    if (/SKILL\.md$/i.test(from)) from = dirname(from)
+    const r = importSkill(from, !!replace)
+    if (r.ok) manager.restartIdle()
+    return { ...r, from }
+  })
+  handle('skills:reveal', () => {
+    const dir = join(claudeDir(), 'skills')
+    mkdirSync(dir, { recursive: true })
+    return shell.openPath(dir)
+  })
+  // ---- plugins (through Claude Code's own `claude plugin` commands)
+  handle('plugins:state', () => pluginState())
+  handle('plugins:available', () => availablePlugins())
+  handle('plugins:action', async (a: PluginAction) => {
+    const r = await pluginAction(a)
+    if (r.ok) manager.restartIdle()
+    return r
+  })
   handle('mcp:toggle', (id: string, name: string, enabled: boolean) => manager.toggleMcp(id, name, enabled))
   handle('mcp:reconnect', (id: string, name: string) => manager.reconnectMcp(id, name))
   handle('mcp:refresh', (id: string) => manager.refreshMcp(id))
@@ -989,6 +1048,12 @@ app.whenReady().then(() => {
     setApiKeyOnly(store.getSettings().signInMethod === 'apiKey')
   }
   if (store.lock.ok) nativeTheme.themeSource = store.getSettings().theme
+  // connectors you signed in to: refresh tokens before they run out, so chats keep working
+  if (store.lock.ok) {
+    const refresh = (): void => void refreshMcpTokens(store).catch((e) => log('warn', 'connector token refresh:', String(e)))
+    refresh()
+    setInterval(refresh, 5 * 60_000).unref()
+  }
   manager = new SessionManager(
     store,
     (e: AgentEvent) => {

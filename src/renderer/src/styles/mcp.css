@@ -71,3 +71,62 @@
 .link-btn.small {
   font-size: 12.5px;
 }
+
+/* ---------- Connectors, skills and plugins ---------- */
+.connector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.connector-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--bg-elev);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.connector-card.added {
+  opacity: 0.7;
+}
+.connector-name {
+  font-weight: 600;
+}
+.connector-desc {
+  flex: 1;
+}
+.connector-foot {
+  align-items: center;
+  margin-top: 4px;
+}
+.connectors-note,
+.skills-panel > .small,
+.plugins-panel > .mcp-test {
+  margin: 6px 0 10px;
+}
+.skills-actions {
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 10px 0;
+}
+.skills-filter {
+  max-width: 200px;
+}
+.skill-row .mcp-summary,
+.plugin-row .mcp-summary {
+  white-space: nowrap;
+}
+.plugin-desc {
+  margin: 4px 0 0 26px;
+}
+.plugin-results {
+  margin-top: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+.mcp-server .tag {
+  white-space: nowrap;
+}

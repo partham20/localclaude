@@ -40,6 +40,8 @@ export async function testMcpServer(entry: McpServerEntry, opts: { cwd?: string;
     return { ok: true, tools: tools.map((t) => t.name), server: client.getServerVersion()?.name, ms: Date.now() - started }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
+    if ((e instanceof Error && e.name === 'UnauthorizedError') || /\b401\b|unauthori[sz]ed|invalid_token/i.test(msg))
+      return { ok: false, needsAuth: true, error: 'The server wants you to sign in.' }
     // a server that crashed may still be flushing why
     if (!stderr) await new Promise((r) => setTimeout(r, 150))
     const detail = stderr.trim().split('\n').slice(-4).join('\n')
