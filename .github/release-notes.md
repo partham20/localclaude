@@ -2,8 +2,12 @@ A personal desktop app for Claude on Windows and Linux, powered by Claude Code a
 
 ## What's new
 
-- **Your name and profile picture.** Click your name at the bottom left to change it in place, or to add, change or remove a profile picture. The same controls are in **Settings → General**. The picture stays on your computer with your other settings.
-- **DeepSeek Harness** (since 1.5.0). Chats can also run on DeepSeek: add a DeepSeek API key at setup or in **Settings → DeepSeek**, then switch any chat between Claude Code and DeepSeek from the model menu. Your local and HTTP MCP servers work in both.
+- **Skills** (Settings → Skills). See every skill your chats can use: yours, your default folder's and your plugins'. Switch any off, write or edit one, or add one from a folder or a `.zip` / `.skill` file.
+- **Plugins** (Settings → Plugins). Browse Claude Code's plugin directory and any marketplace you add, then install, switch on and off, update or uninstall plugins. It uses Claude Code's own plugin commands, so Claude Code in a terminal sees the same plugins.
+- **Connectors** (Settings → Connectors). Add popular connectors (Notion, Linear, Sentry, Atlassian, GitHub, Context7 and more) in one click, use **Sign in** for servers that need you to log in, and copy the MCP servers Claude Code already has. Your MCP server list moved here from Tools & computer.
+- **DeepSeek chats** get your skills, your plugins' MCP servers and the connectors you signed in to. Plugins' slash commands, agents and hooks are Claude Code features, so they stay in Claude Code chats.
+- **Your name and profile picture** (since 1.6.0). Click your name at the bottom left to change it or your picture.
+- **DeepSeek Harness** (since 1.5.0). Add a DeepSeek API key and switch any chat between Claude Code and DeepSeek from the model menu.
 
 ## Downloads
 
