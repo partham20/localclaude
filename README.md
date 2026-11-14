@@ -149,7 +149,7 @@ npm run dist:linux
 
 The installer is about 250 MB because it carries the native Claude Code binary.
 
-Pushing a version tag (`git tag v1.2.3 && git push origin v1.2.3`) builds all of them, portable versions included, on GitHub and puts them, with the source code, in a draft release for that tag. Pull requests that change the packaging also build the portable versions; download them from the run's **Artifacts** on the Actions tab.
+Pushing a version tag (`git tag v1.2.3 && git push origin v1.2.3`) builds all of them, portable versions included, on GitHub and puts them, with the source code, in a draft release for that tag. Pull requests that change the packaging also build the portable versions; download them from the run's **Artifacts** on the Actions tab. Or skip the tag: on the Actions tab, **Release → Run workflow** builds a branch or commit and makes the release for the version in its `package.json`, creating the tag for you (tick **publish** to publish it straight away instead of leaving a draft).
 
 ## Computer use
 
