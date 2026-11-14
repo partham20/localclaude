@@ -1,5 +1,10 @@
 A personal desktop app for Claude on Windows and Linux, powered by Claude Code and your own Claude Pro or Max subscription. See the [README](https://github.com/partham20/localclaude#readme) for everything it does.
 
+## What's new
+
+- **Your name and profile picture.** Click your name at the bottom left to change it in place, or to add, change or remove a profile picture. The same controls are in **Settings → General**. The picture stays on your computer with your other settings.
+- **DeepSeek Harness** (since 1.5.0). Chats can also run on DeepSeek: add a DeepSeek API key at setup or in **Settings → DeepSeek**, then switch any chat between Claude Code and DeepSeek from the model menu. Your local and HTTP MCP servers work in both.
+
 ## Downloads
 
 | File | For |
