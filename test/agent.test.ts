@@ -1,5 +1,6 @@
 // Bridge tests: (1) synthetic SDK stream -> history, (2) real Claude Code spawn without credentials.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { AVATAR_MAX_LENGTH, isAvatarImage } from '../src/shared/avatar'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { PROJECT_KNOWLEDGE_LIMIT, SessionManager, systemAppend } from '../src/main/agent'
 import { ARTIFACT_TOOLS, createArtifactServer, renderArtifactPage } from '../src/main/artifacts'
@@ -1121,6 +1122,13 @@ function yourName() {
   st._s.settings.userName = ''
   assert.ok(!((m as any).get(chat.id).buildOptions().systemPrompt.append ?? '').includes("user's name"), 'not set: nothing said')
   console.log('✓ your name: Claude is told what to call you')
+  const px = 'data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=='
+  assert.ok(isAvatarImage(px))
+  assert.ok(!isAvatarImage(''), 'no picture')
+  assert.ok(!isAvatarImage('https://example.com/me.png'), 'only a picture saved on this computer')
+  assert.ok(!isAvatarImage('data:image/svg+xml;base64,PHN2Zz4='), 'no SVG')
+  assert.ok(!isAvatarImage('data:image/png;base64,' + 'A'.repeat(AVATAR_MAX_LENGTH)), 'too big')
+  console.log('✓ your profile picture: only small images are kept')
 }
 
 /** LOCALCLAUDE_API_KEY: the app says which chats bill it, lets you switch, and never hands the key to the window. */

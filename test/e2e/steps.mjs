@@ -734,6 +734,50 @@ export const steps = [
       await c.page(`(() => { const i = __t.q('input[name="userName"]'); i.focus(); __t.setValue(i, 'Paartha'); return true })()`)
       await c.closeModal()
       await c.waitFor('your name in the sidebar', "__t.text('.account-name') === 'Paartha' && __t.text('.side-account .avatar').trim() === 'P' && __t.text('.account-plan').includes('Max')")
+      // or change it right there: account menu → Change name…, Enter saves, Esc cancels
+      await c.page("__t.click(__t.q('.account-menu .menu-trigger'))")
+      await c.menuItem('Change name…')
+      await c.waitFor('the name field in the sidebar', "document.activeElement === __t.q('.account-name-input') && __t.q('.account-name-input').value === 'Paartha'")
+      await c.page("(() => { const i = __t.q('.account-name-input'); __t.setValue(i, 'Partha M'); __t.key(i, 'Enter'); return true })()")
+      await c.waitFor('the new name', "__t.text('.account-name') === 'Partha M' && !__t.q('.account-name-input')")
+      await c.page("__t.click(__t.q('.account-menu .menu-trigger'))")
+      await c.menuItem('Change name…')
+      await c.page("(() => { const i = __t.q('.account-name-input'); __t.setValue(i, 'Nope'); __t.key(i, 'Escape'); return true })()")
+      await c.waitFor('Esc keeps the old name', "__t.text('.account-name') === 'Partha M' && !__t.q('.account-name-input')")
+      // a profile picture: the file chooser is answered with a 300×200 PNG, which comes back as a square
+      await c.page(`(() => {
+        const cv = document.createElement('canvas'); cv.width = 300; cv.height = 200
+        const g = cv.getContext('2d'); g.fillStyle = '#e44'; g.fillRect(0, 0, 300, 200)
+        window.__pickFile = cv.toDataURL('image/png')
+        if (!window.__clickPatched) {
+          window.__clickPatched = true
+          const click = HTMLInputElement.prototype.click
+          HTMLInputElement.prototype.click = function () {
+            if (this.type !== 'file' || !window.__pickFile) return click.call(this)
+            // (not fetch(): the page's CSP doesn't allow fetching data: URLs)
+            const [head, b64] = window.__pickFile.split(',')
+            const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0))
+            const dt = new DataTransfer(); dt.items.add(new File([bytes], 'me.png', { type: head.slice(5, head.indexOf(';')) }))
+            this.files = dt.files; this.dispatchEvent(new Event('change'))
+          }
+        }
+        return true
+      })()`)
+      await c.page("__t.click(__t.q('.account-menu .menu-trigger'))")
+      await c.menuItem('Add profile picture…')
+      await c.waitFor('your picture in the sidebar', "(() => { const i = __t.q('.side-account img.avatar'); return !!i && i.complete && i.naturalWidth === 160 && i.naturalHeight === 160 && i.src.startsWith('data:image/') })()")
+      await c.shot('sidebar-picture')
+      await c.openSettings('General')
+      await c.waitFor('the picture in Settings', "!!__t.q('.profile-picture img.avatar') && !!__t.q('button[name=removePicture]')")
+      await c.page("window.__pickFile = 'data:text/plain;base64,aGVsbG8='")
+      await c.page("__t.click(__t.q('button[name=choosePicture]'))")
+      await c.waitFor('a file that isn’t a picture is refused', "__t.text('.modal .notice.error').includes('isn’t a picture') && !!__t.q('.profile-picture img.avatar')")
+      await c.page("__t.click(__t.q('button[name=removePicture]'))")
+      await c.waitFor('picture removed', "!__t.q('.profile-picture img.avatar') && !__t.q('.side-account img.avatar') && __t.text('.side-account .avatar').trim() === 'P'")
+      await c.page(`(() => { const i = __t.q('input[name="userName"]'); i.focus(); __t.setValue(i, 'Paartha'); return true })()`)
+      await c.closeModal()
+      await c.waitFor('name from Settings again', "__t.text('.account-name') === 'Paartha'")
+      await c.page("window.__pickFile = null")
       await c.shot('sidebar')
     }
   },

@@ -105,6 +105,8 @@ export interface AppSettings {
   obsidianFolder: string
   /** what Claude calls you (shown in the sidebar too); '' = the name from your email */
   userName: string
+  /** your profile picture in the sidebar: a small data: URL ('' = your initial) */
+  userAvatar: string
   /** Remote Control: how sessions started from your phone run, and their permission mode ('' = ask) */
   remoteSpawn: RemoteSpawn
   remotePermissionMode: string
@@ -394,6 +396,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   obsidianSyncMemory: false,
   obsidianFolder: 'LocalClaude',
   userName: '',
+  userAvatar: '',
   remoteSpawn: 'same-dir',
   remotePermissionMode: '',
   appendSystemPrompt: '',

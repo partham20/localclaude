@@ -810,6 +810,9 @@ export default function App() {
           if (done) writePref('sidebarWidth', String(w))
         }}
         userName={settings.userName ?? ''}
+        userAvatar={settings.userAvatar ?? ''}
+        onProfile={(patch) => void updateSettings(patch)}
+        onError={(text) => setToast({ text, error: true })}
         onDelete={(id) => void deleteChat(id)}
         onDeleteChats={(ids) => void deleteChats(ids)}
         onPinChats={(ids, p) => void pinChats(ids, p)}

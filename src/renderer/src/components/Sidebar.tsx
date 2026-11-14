@@ -3,6 +3,7 @@ import type { AuthStatus, ChatSearchHit, Project, SessionMeta } from '../../../s
 import { api } from '../api'
 import type { SessionRuntime } from '../App'
 import { droppedChats, isChatDrag, startChatDrag } from '../dnd'
+import { Avatar, pickAvatar } from './Avatar'
 import { AccountPlan } from './Billing'
 import { Icon } from './Icon'
 import { Menu, type MenuEntry } from './Menu'
@@ -27,22 +28,6 @@ const folderName = (p: string): string => p.split(/[\\/]/).filter(Boolean).pop()
 export const SIDEBAR_WIDTH = { min: 240, max: 560, default: 272 }
 /** a folder or project group shows this many chats until you ask for more */
 const GROUP_PREVIEW = 8
-
-// A color for your avatar, the same every time for the same name.
-const AVATAR_COLORS = [
-  ['#d97757', '#b35a3c'],
-  ['#5b8def', '#3f6fd1'],
-  ['#7b5fc4', '#5e44a3'],
-  ['#2f9e7a', '#227a5e'],
-  ['#c9772b', '#a35c1c'],
-  ['#c2456a', '#9e3253']
-]
-function avatarStyle(name: string): { background: string } {
-  let h = 0
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0
-  const [a, b] = AVATAR_COLORS[h % AVATAR_COLORS.length]
-  return { background: `linear-gradient(135deg, ${a}, ${b})` }
-}
 
 // How the sidebar lists chats (per viewer): grouped by folder or project, or by date; collapsed groups.
 const PREFS = 'sidebar.sections'
@@ -110,6 +95,12 @@ export function Sidebar(props: {
   onResize: (width: number, done: boolean) => void
   /** what Claude calls you, from Settings ('' = the name from your email) */
   userName: string
+  /** your profile picture ('' = your initial) */
+  userAvatar: string
+  /** change your name or picture right here (the same settings as Settings → General) */
+  onProfile: (patch: { userName?: string; userAvatar?: string }) => void
+  /** a picture couldn't be read */
+  onError: (message: string) => void
   /** "+" on a folder or project group */
   onNewIn: (cwd: string | undefined, projectId: string | undefined) => void
   /** narrow window: slide over the chat instead of taking space */
@@ -171,6 +162,14 @@ export function Sidebar(props: {
   const anchor = useRef<string | null>(null)
   /** the project a dragged chat is over */
   const [dropOn, setDropOn] = useState<string | null>(null)
+  /** editing your name in the account row */
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
+  /** set once Enter/Esc/blur has finished the edit, so the blur as the field goes away doesn't save again */
+  const nameDone = useRef(false)
+  const editName = (): void => {
+    nameDone.current = false
+    setNameDraft(props.userName)
+  }
 
   // Full-text search inside messages, a moment after you stop typing.
   useEffect(() => {
@@ -289,7 +288,21 @@ export function Sidebar(props: {
     }
   })
 
-  const name = props.userName.trim() || (props.auth.email ? props.auth.email.split('@')[0] : 'You')
+  const emailName = props.auth.email ? props.auth.email.split('@')[0] : 'You'
+  const name = props.userName.trim() || emailName
+  const saveName = (): void => {
+    if (nameDraft === null || nameDone.current) return
+    nameDone.current = true
+    const v = nameDraft.trim()
+    setNameDraft(null)
+    if (v !== props.userName.trim()) props.onProfile({ userName: v })
+  }
+  const choosePicture = (): void => {
+    pickAvatar().then(
+      (img) => img && props.onProfile({ userAvatar: img }),
+      (e) => props.onError(e instanceof Error ? e.message : String(e))
+    )
+  }
 
   // drag the right edge to resize
   const startResize = (e: MouseEvent): void => {
@@ -642,28 +655,58 @@ export function Sidebar(props: {
         </div>
       )}
       <div className="side-account">
-        <Menu
-          className="account-menu"
-          direction="up"
-          trigger={
-            <>
-              <span className="avatar" style={avatarStyle(name)}>
-                {name.slice(0, 1).toUpperCase()}
-              </span>
-              <span className="account-name">{name}</span>
-              <AccountPlan auth={props.auth} consoleKey={props.consoleKey} />
-              <Icon name="chevronDown" size={14} className="account-chev" />
-            </>
-          }
-          entries={[
-            { section: props.auth.email ?? 'Signed in' },
-            { key: 'settings', label: 'Settings', onSelect: props.onSettings },
-            ...(props.onPalette ? [{ key: 'palette', label: 'Command palette', onSelect: props.onPalette }] : []),
-            { key: 'export', label: 'Export all chats…', onSelect: props.onExportAll },
-            // a token from CLAUDE_CODE_OAUTH_TOKEN can't be signed out of here (Settings says how)
-            ...(props.auth.usingOAuthTokenEnv && !props.auth.apiKeyOnly ? [] : (['divider', { key: 'signout', label: 'Sign out', onSelect: props.onSignOut }] as const))
-          ]}
-        />
+        {nameDraft !== null ? (
+          <div className="account-edit">
+            <Avatar name={nameDraft.trim() || emailName} image={props.userAvatar} />
+            <input
+              className="input account-name-input"
+              aria-label="Your name"
+              autoFocus
+              maxLength={60}
+              placeholder={emailName}
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              onBlur={saveName}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveName()
+                else if (e.key === 'Escape') {
+                  e.stopPropagation()
+                  nameDone.current = true
+                  setNameDraft(null)
+                }
+              }}
+            />
+          </div>
+        ) : (
+          <Menu
+            className="account-menu"
+            direction="up"
+            trigger={
+              <>
+                <Avatar name={name} image={props.userAvatar} />
+                <span className="account-name" onDoubleClick={(e) => {
+                  e.stopPropagation()
+                  editName()
+                }}>{name}</span>
+                <AccountPlan auth={props.auth} consoleKey={props.consoleKey} />
+                <Icon name="chevronDown" size={14} className="account-chev" />
+              </>
+            }
+            entries={[
+              { section: props.auth.email ?? 'Signed in' },
+              { key: 'rename', label: 'Change name…', onSelect: editName },
+              { key: 'picture', label: props.userAvatar ? 'Change picture…' : 'Add profile picture…', onSelect: choosePicture },
+              ...(props.userAvatar ? [{ key: 'nopicture', label: 'Remove picture', onSelect: () => props.onProfile({ userAvatar: '' }) }] : []),
+              'divider',
+              { key: 'settings', label: 'Settings', onSelect: props.onSettings },
+              ...(props.onPalette ? [{ key: 'palette', label: 'Command palette', onSelect: props.onPalette }] : []),
+              { key: 'export', label: 'Export all chats…', onSelect: props.onExportAll },
+              // a token from CLAUDE_CODE_OAUTH_TOKEN can't be signed out of here (Settings says how)
+              ...(props.auth.usingOAuthTokenEnv && !props.auth.apiKeyOnly ? [] : (['divider', { key: 'signout', label: 'Sign out', onSelect: props.onSignOut }] as const))
+            ]}
+          />
+        )}
         <button className="icon-btn account-settings" onClick={props.onSettings} title="Settings (Ctrl+,)">
           <Icon name="settings" size={18} />
         </button>
