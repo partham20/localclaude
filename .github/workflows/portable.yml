@@ -10,6 +10,7 @@ on:
       - package.json
       - package-lock.json
       - .github/workflows/portable.yml
+      - test/packaged-smoke.mjs
   workflow_dispatch:
 
 concurrency:
@@ -57,6 +58,15 @@ jobs:
           if [ "$RUNNER_OS" = Windows ]; then exe=release/win-unpacked/resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe
           else exe=release/linux-unpacked/resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude; fi
           "$exe" --version
+
+      # The packaged app itself starts and shows its window
+      - name: Launch the packaged app (Windows)
+        if: runner.os == 'Windows'
+        run: node test/packaged-smoke.mjs release/win-unpacked/LocalClaude.exe
+
+      - name: Launch the packaged app (Linux, virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node test/packaged-smoke.mjs release/linux-unpacked/localclaude
 
       - uses: actions/upload-artifact@v7
         with:
