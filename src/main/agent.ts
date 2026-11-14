@@ -18,6 +18,7 @@ import type {
   ImageRef,
   McpStatus,
   MemoryItem,
+  ModelOption,
   PlanUsage,
   Project,
   ResponseStyle,
@@ -1025,7 +1026,16 @@ function friendlyError(text: string): string {
 
 export class SessionManager {
   private sessions = new Map<string, AgentSession | DeepSeekSession>()
-  models: { value: string; displayName: string; description: string }[] = []
+  private reportedModels: ModelOption[] = []
+  /** Claude Code's model menu: from this run, else the one remembered from an earlier run */
+  get models(): ModelOption[] {
+    if (this.reportedModels.length) return this.reportedModels
+    try {
+      return this.store.getClaudeModels()
+    } catch {
+      return []
+    }
+  }
   /** DeepSeek Harness's models, as the last dsh session listed them */
   deepseekModels: { value: string; displayName: string; description: string }[] = []
   private deps: SessionDeps
@@ -1064,7 +1074,12 @@ export class SessionManager {
         this.emit,
         () => this.store.getSettings(),
         (m) => {
-          this.models = m
+          this.reportedModels = m
+          try {
+            this.store.setClaudeModels(m)
+          } catch {
+            /* store locked: remembered next time */
+          }
           this.emit({ type: 'status', sessionId: id, status: s!.running ? 'running' : 'idle' })
         },
         this.deps

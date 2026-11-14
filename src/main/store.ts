@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { readMachineId } from './machineId'
 import { normalizeAppearance } from '../shared/customize'
 import type { McpAuthRecord } from './mcpAuth'
-import { AppSettings, Artifact, ChatMessage, DEFAULT_SETTINGS, LockStatus, MemoryItem, Project, SessionMeta } from '../shared/types'
+import { AppSettings, Artifact, ChatMessage, DEFAULT_SETTINGS, LockStatus, MemoryItem, ModelOption, Project, SessionMeta } from '../shared/types'
 
 interface Vault {
   version: 1
@@ -35,6 +35,8 @@ interface Vault {
   deepseekApiKey?: string
   /** connectors you signed in to (OAuth), by server URL: never sent to the window, never in exports or backups */
   mcpAuth?: Record<string, McpAuthRecord>
+  /** the model menu Claude Code last reported for this account, so new chats show it before their first message */
+  claudeModels?: ModelOption[]
 }
 
 export interface BackupState {
@@ -305,6 +307,16 @@ export class SecureStore {
   }
   allMcpAuth(): Record<string, McpAuthRecord> {
     return { ...this.vault?.mcpAuth }
+  }
+
+  // ---------- models ----------
+  getClaudeModels(): ModelOption[] {
+    return this.vault?.claudeModels ?? []
+  }
+  setClaudeModels(models: ModelOption[]): void {
+    if (!this.vault || JSON.stringify(models) === JSON.stringify(this.vault.claudeModels ?? [])) return
+    this.vault.claudeModels = models
+    this.saveVault()
   }
 
   // ---------- backups ----------

@@ -35,6 +35,7 @@ import { fitToScreens } from '../src/main/windowState'
 import { resolveStyle } from '../src/shared/styles'
 import { DeepSeekSession, cleanDeepSeekKey, displayTool, dshPermissionMode, toolOutput } from '../src/main/deepseek'
 import { deepseekModelLabel } from '../src/shared/deepseek'
+import { MODEL_ALIASES, claudeModelMenu } from '../src/shared/models'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -1766,6 +1767,32 @@ await slashCommandOutput()
 await computerUseOption()
 diffHelpers()
 await artifactTool()
+function modelMenu(): void {
+  // before Claude Code reports anything, the built-in menu has Fable, strongest first
+  assert.deepEqual(
+    claudeModelMenu([]).map((m) => m.value),
+    ['', 'fable', 'opus', 'sonnet', 'haiku']
+  )
+  assert.equal(MODEL_ALIASES[0].value, '')
+  // what Claude Code reports wins, sorted strongest first, its own "default" and duplicates dropped, unknowns kept
+  const menu = claudeModelMenu([
+    { value: 'default', displayName: 'Default (recommended)', description: 'x' },
+    { value: 'sonnet', displayName: 'Sonnet', description: 's' },
+    { value: 'haiku', displayName: 'Haiku', description: 'h' },
+    { value: 'experimental', displayName: 'Experimental', description: 'e' },
+    { value: 'fable', displayName: 'Fable', description: 'f' },
+    { value: 'sonnet', displayName: 'Sonnet again', description: 's' },
+    { value: 'opus', displayName: 'Opus', description: 'o' }
+  ])
+  assert.deepEqual(
+    menu.map((m) => m.value),
+    ['', 'fable', 'opus', 'sonnet', 'haiku', 'experimental']
+  )
+  assert.equal(menu[0].displayName, 'Default')
+  console.log('✓ model menu: Fable listed, strongest first, Claude Code’s own list wins')
+}
+
+modelMenu()
 projectPrompt()
 await memoryTool()
 exportAndImport()

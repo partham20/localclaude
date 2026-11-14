@@ -6,6 +6,7 @@ import type { SessionRuntime } from '../App'
 import { api } from '../api'
 import { allStyles } from '../../../shared/styles'
 import { designKind } from '../../../shared/design'
+import { claudeModelMenu } from '../../../shared/models'
 import { DEEPSEEK_EFFORTS, DEEPSEEK_MODELS, ENGINES, deepseekModelLabel } from '../../../shared/deepseek'
 import { ArtifactPanel, type PanelState } from './ArtifactPanel'
 import { ChoiceDialog } from './ChoiceDialog'
@@ -38,12 +39,7 @@ export const MODES: { value: PermissionModeUI; label: string; short: string; hin
 /** Shift+Tab cycles these, like Claude Code. Full access is only reachable from the menu. */
 const CYCLE: PermissionModeUI[] = ['default', 'acceptEdits', 'plan', 'auto']
 
-export const MODEL_ALIASES = [
-  { value: '', displayName: 'Default', description: "Claude Code's default for your plan" },
-  { value: 'opus', displayName: 'Opus', description: 'Most capable' },
-  { value: 'sonnet', displayName: 'Sonnet', description: 'Fast and capable' },
-  { value: 'haiku', displayName: 'Haiku', description: 'Fastest' }
-]
+export { MODEL_ALIASES } from '../../../shared/models'
 export const EFFORTS: { value: AppSettings['effort']; label: string }[] = [
   { value: '', label: 'Default' },
   { value: 'low', label: 'Low' },
@@ -131,7 +127,7 @@ export function ChatView(props: {
   const [designShown, setDesignShown] = useState<PanelState>({ id: null, version: null })
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
-  const [models, setModels] = useState(MODEL_ALIASES)
+  const [models, setModels] = useState(() => claudeModelMenu([]))
   const [cmdIndex, setCmdIndex] = useState(0)
   const [dragOver, setDragOver] = useState(false)
   const [rewind, setRewind] = useState<{ messageId: string | null } | null>(null)
@@ -237,7 +233,7 @@ export function ChatView(props: {
   const [dsModels, setDsModels] = useState(DEEPSEEK_MODELS)
   useEffect(() => {
     void api.listModels().then((m) => {
-      if (m.length) setModels([MODEL_ALIASES[0], ...m.filter((x) => x.value && x.value !== 'default')])
+      setModels(claudeModelMenu(m))
     })
     void api.deepseekModels().then((m) => {
       if (m.length) setDsModels([DEEPSEEK_MODELS[0], ...m])
