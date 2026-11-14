@@ -5,7 +5,8 @@ import { DESIGN_KINDS, designKind } from '../../../shared/design'
 import type { AppSettings, Attachment, DesignInfo, DesignKind, PermissionModeUI, ProjectArtifactRef, SessionMeta } from '../../../shared/types'
 import { api } from '../api'
 import { FRAMED } from './ArtifactPanel'
-import { EFFORTS, MODEL_ALIASES, MODES, fileToAttachment, prettyModel } from './ChatView'
+import { claudeModelMenu } from '../../../shared/models'
+import { EFFORTS, MODES, fileToAttachment, prettyModel } from './ChatView'
 import { Icon } from './Icon'
 import { Menu } from './Menu'
 import { TitleBar, ago } from './Projects'
@@ -76,10 +77,10 @@ export function DesignsView(props: {
   // the new design's chat starts with these; they can be changed there later
   const [model, setModel] = useState(props.settings.defaultModel)
   const [mode, setMode] = useState<PermissionModeUI>(props.settings.defaultPermissionMode)
-  const [models, setModels] = useState(MODEL_ALIASES)
+  const [models, setModels] = useState(() => claudeModelMenu([]))
   useEffect(() => {
     void api.listModels().then((m) => {
-      if (m.length) setModels([MODEL_ALIASES[0], ...m.filter((x) => x.value && x.value !== 'default')])
+      setModels(claudeModelMenu(m))
     })
   }, [])
   const ta = useRef<HTMLTextAreaElement>(null)

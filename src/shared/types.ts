@@ -3,6 +3,13 @@ import { DEFAULT_APPEARANCE, type Appearance } from './customize'
 export type { Appearance, ModInfo, ThemePreset } from './customize'
 
 /** auto = Claude Code's classifier approves or denies each action */
+/** one entry in a model menu */
+export interface ModelOption {
+  value: string
+  displayName: string
+  description: string
+}
+
 export type PermissionModeUI = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions'
 
 export interface McpServerEntry {

@@ -14,6 +14,7 @@ import { billsConsoleKey } from '../../../shared/billing'
 import { ConsoleKeySettings, OAuthTokenSettings, SignOut } from './Billing'
 import { ShortcutField, StylesEditor, UsagePanel } from './SettingsExtras'
 import { DeepSeekPanel } from './DeepSeekSettings'
+import { claudeModelMenu } from '../../../shared/models'
 
 const TABS: [string, string, string][] = [
   ['general', 'General', 'settings'],
@@ -55,6 +56,10 @@ export function SettingsDialog(props: {
   const s = props.settings
   const consoleKey = billsConsoleKey(props.auth, s)
   const [lock, setLock] = useState<LockStatus | null>(null)
+  const [models, setModels] = useState(() => claudeModelMenu([]))
+  useEffect(() => {
+    void api.listModels().then((m) => setModels(claudeModelMenu(m)))
+  }, [])
   const [info, setInfo] = useState<Awaited<ReturnType<typeof api.appInfo>> | null>(null)
   const [prompt, setPrompt] = useState(s.appendSystemPrompt)
   const [userName, setUserName] = useState(s.userName ?? '')
@@ -182,10 +187,12 @@ export function SettingsDialog(props: {
               <div className="field">
                 <label>Default model</label>
                 <select className="select" value={s.defaultModel} onChange={(e) => void props.onChange({ defaultModel: e.target.value })}>
-                  <option value="">Claude Code default</option>
-                  <option value="opus">Opus</option>
-                  <option value="sonnet">Sonnet</option>
-                  <option value="haiku">Haiku</option>
+                  {models.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.value ? m.displayName : 'Claude Code default'}
+                    </option>
+                  ))}
+                  {s.defaultModel && !models.some((m) => m.value === s.defaultModel) && <option value={s.defaultModel}>{s.defaultModel}</option>}
                 </select>
               </div>
               <div className="field">
