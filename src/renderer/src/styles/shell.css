@@ -581,3 +581,27 @@
   font-size: 17.5px;
   line-height: 1.6;
 }
+
+/* your profile picture, and editing your name in the account row */
+.avatar.avatar-img {
+  object-fit: cover;
+  background: var(--hover);
+  padding: 0;
+}
+.account-edit {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 2px 8px;
+}
+.account-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 14px;
+}
+.profile-picture {
+  align-items: center;
+}

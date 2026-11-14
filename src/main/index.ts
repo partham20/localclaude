@@ -81,6 +81,7 @@ import { SecureStore } from './store'
 import { checkDeepSeekKey, cleanDeepSeekKey, deepseekKeySource, deepseekStatus, installDsh } from './deepseek'
 import type { Engine } from '../shared/types'
 import { createZip } from './zip'
+import { isAvatarImage } from '../shared/avatar'
 
 // Artifact previews load from artifact://view/<chat>/<artifact>/<version> in a sandboxed frame;
 // chat images from lcimg://chat/<chat>/<image> (decrypted on request).
@@ -349,6 +350,8 @@ function registerIpc(): void {
     patch = { ...patch }
     delete patch.signInMethod
     if (patch.appearance) patch.appearance = normalizeAppearance(patch.appearance)
+    if ('userAvatar' in patch && patch.userAvatar !== '' && !isAvatarImage(patch.userAvatar)) delete patch.userAvatar
+    if (typeof patch.userName === 'string') patch.userName = patch.userName.trim().slice(0, 60)
     const before = store.getSettings()
     const s = store.setSettings(patch)
     nativeTheme.themeSource = s.theme
@@ -907,6 +910,7 @@ function syncToVault(e: AgentEvent): void {
 
 /** Settings that only change the UI; changing them doesn't restart idle chats. */
 const UI_ONLY_SETTINGS = new Set<keyof AppSettings>([
+  'userAvatar',
   // DeepSeek Harness: new chats' engine and model, and effort, which is applied before each prompt
   'defaultEngine',
   'deepseekModel',

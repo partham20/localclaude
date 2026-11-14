@@ -3,6 +3,7 @@ import type { AppSettings, AuthStatus, LockStatus, MemoryItem, ModInfo } from '.
 import { api } from '../api'
 import { AppearancePanel, KeyboardPanel, ModsPanel } from './Customize'
 import { Icon } from './Icon'
+import { Avatar, pickAvatar } from './Avatar'
 import { BackupsPanel } from './Backups'
 import { McpManager } from './McpManager'
 import { MemoryList } from './Memory'
@@ -52,6 +53,7 @@ export function SettingsDialog(props: {
   const [info, setInfo] = useState<Awaited<ReturnType<typeof api.appInfo>> | null>(null)
   const [prompt, setPrompt] = useState(s.appendSystemPrompt)
   const [userName, setUserName] = useState(s.userName ?? '')
+  const [pictureError, setPictureError] = useState('')
   // the name is saved when you leave the field, or when Settings closes while you're typing
   const saveName = (value: string): void => {
     if (value.trim() !== (s.userName ?? '')) void props.onChange({ userName: value.trim() })
@@ -117,6 +119,31 @@ export function SettingsDialog(props: {
                   onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
                 />
                 <p className="muted small">Shown at the bottom of the sidebar, and Claude knows it in your chats.</p>
+              </div>
+              <div className="field">
+                <label>Profile picture</label>
+                <div className="row gap profile-picture">
+                  <Avatar name={userName.trim() || props.auth.email?.split('@')[0] || 'You'} image={s.userAvatar} size={44} />
+                  <button
+                    className="btn"
+                    name="choosePicture"
+                    onClick={() => {
+                      setPictureError('')
+                      pickAvatar().then(
+                        (img) => img && void props.onChange({ userAvatar: img }),
+                        (e) => setPictureError(e instanceof Error ? e.message : String(e))
+                      )
+                    }}
+                  >
+                    {s.userAvatar ? 'Change picture…' : 'Choose picture…'}
+                  </button>
+                  {s.userAvatar && (
+                    <button className="btn ghost" name="removePicture" onClick={() => void props.onChange({ userAvatar: '' })}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+                {pictureError ? <div className="notice error small">{pictureError}</div> : <p className="muted small">Shown next to your name in the sidebar. It stays on this computer.</p>}
               </div>
               <div className="field">
                 <label>Default working folder for new chats</label>
