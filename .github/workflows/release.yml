@@ -60,6 +60,15 @@ jobs:
           # not code-signed
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      # Nothing is released unless the packaged app starts and shows its window
+      - name: Launch the packaged app (Windows)
+        if: runner.os == 'Windows'
+        run: node test/packaged-smoke.mjs release/win-unpacked/LocalClaude.exe
+
+      - name: Launch the packaged app (Linux, virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node test/packaged-smoke.mjs release/linux-unpacked/localclaude
+
       - uses: actions/upload-artifact@v7
         with:
           name: installers-${{ matrix.os }}

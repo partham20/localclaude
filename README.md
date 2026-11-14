@@ -237,6 +237,8 @@ npm run test:e2e   # builds the app and clicks through it with a scripted Claude
 
 `test:e2e` runs three suites: the app signed in; the setup screen, Appearance, Keyboard, the command palette and the example mod (signed out, `node test/e2e/launch.mjs --setup` runs just that one); and DeepSeek Harness with a scripted dsh that speaks ACP (`--deepseek`).
 
+`node test/packaged-smoke.mjs release/win-unpacked/LocalClaude.exe` (or `release/linux-unpacked/localclaude`) launches a packaged build with a throwaway profile and checks its window comes up. The Portable builds and Release workflows run it, so nothing is released unless the packaged app starts.
+
 The end-to-end tests run the real app (main process, preload and UI) with a stand-in for Claude Code that speaks the same protocol, in a throwaway profile, so they need no account or network. Set `LOCALCLAUDE_E2E_SHOTS=folder` to save screenshots. CI runs them on Windows and Linux.
 
 ## Project layout
