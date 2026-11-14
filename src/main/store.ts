@@ -30,6 +30,8 @@ interface Vault {
   consoleApiKey?: string
   /** subscription token (from `claude setup-token`) saved on the setup screen; same rules as the Console key */
   oauthToken?: string
+  /** DeepSeek API key for DeepSeek Harness chats; same rules as the Console key */
+  deepseekApiKey?: string
 }
 
 export interface BackupState {
@@ -274,6 +276,16 @@ export class SecureStore {
   setOAuthToken(token: string | undefined): void {
     if (token) this.vault.oauthToken = token
     else delete this.vault.oauthToken
+    this.saveVault()
+  }
+
+  // ---------- DeepSeek API key ----------
+  getDeepSeekKey(): string | undefined {
+    return this.vault?.deepseekApiKey
+  }
+  setDeepSeekKey(key: string | undefined): void {
+    if (key) this.vault.deepseekApiKey = key
+    else delete this.vault.deepseekApiKey
     this.saveVault()
   }
 

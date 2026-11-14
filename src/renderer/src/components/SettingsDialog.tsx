@@ -10,6 +10,7 @@ import { ObsidianPanel } from './ObsidianPanel'
 import { billsConsoleKey } from '../../../shared/billing'
 import { ConsoleKeySettings, OAuthTokenSettings, SignOut } from './Billing'
 import { ShortcutField, StylesEditor, UsagePanel } from './SettingsExtras'
+import { DeepSeekPanel } from './DeepSeekSettings'
 
 const TABS: [string, string, string][] = [
   ['general', 'General', 'settings'],
@@ -21,6 +22,7 @@ const TABS: [string, string, string][] = [
   ['obsidian', 'Obsidian', 'file'],
   ['backups', 'Backups', 'upload'],
   ['usage', 'Usage', 'sliders'],
+  ['deepseek', 'DeepSeek', 'terminal'],
   ['account', 'Account & privacy', 'key'],
   ['about', 'About', 'question']
 ]
@@ -33,6 +35,8 @@ export function SettingsDialog(props: {
   onChange: (p: Partial<AppSettings>) => Promise<void>
   onClose: () => void
   onLogout: () => Promise<void>
+  /** DeepSeek-only: open the setup screen to sign in to Claude too */
+  onSignInClaude: () => void
   /** the Console key was saved or removed: read the sign-in status again */
   onAuthChanged: () => Promise<void>
   globalMemory: MemoryItem[]
@@ -349,6 +353,7 @@ export function SettingsDialog(props: {
           {props.tab === 'obsidian' && <ObsidianPanel settings={s} onChange={props.onChange} />}
           {props.tab === 'backups' && <BackupsPanel settings={s} onChange={props.onChange} onRestore={props.onImport} />}
 
+          {props.tab === 'deepseek' && <DeepSeekPanel settings={s} auth={props.auth} onChange={props.onChange} onAuthChanged={props.onAuthChanged} />}
           {props.tab === 'account' && (
             <>
               <h2>Account & privacy</h2>
@@ -368,7 +373,23 @@ export function SettingsDialog(props: {
                     {consoleKey ? 'only your subscription and LOCALCLAUDE_API_KEY are used.' : 'only your subscription is used.'}
                   </p>
                 )}
-                <SignOut auth={props.auth} onLogout={() => void props.onLogout()} />
+                {!props.auth.loggedIn && props.auth.deepseekKey ? (
+                  <>
+                    <p className="muted small">You’re using DeepSeek Harness only. Sign in to Claude to switch chats to Claude Code too.</p>
+                    <div className="row gap">
+                      <button className="btn primary" onClick={props.onSignInClaude}>
+                        Sign in to Claude…
+                      </button>
+                      {s.signInMethod === 'deepseek' && (
+                        <button className="btn danger" onClick={() => void props.onLogout()}>
+                          Sign out
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <SignOut auth={props.auth} onLogout={() => void props.onLogout()} />
+                )}
               </div>
               {!props.auth.apiKeyOnly && (
                 <OAuthTokenSettings
@@ -460,6 +481,7 @@ export function SettingsDialog(props: {
 
 /** How you're signed in, in words. */
 function signInLabel(auth: AuthStatus): string {
+  if (!auth.loggedIn && auth.deepseekKey) return 'DeepSeek Harness only (not signed in to Claude)'
   if (auth.apiKeyOnly) return 'Console API key only'
   if (auth.usingOAuthTokenEnv) return 'Subscription token (CLAUDE_CODE_OAUTH_TOKEN)'
   if (auth.oauthTokenSaved) return 'Subscription token (saved in LocalClaude)'

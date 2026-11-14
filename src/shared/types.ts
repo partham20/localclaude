@@ -59,7 +59,15 @@ export interface AppSettings {
   /** mods switched on, by id (Settings → Mods) */
   mods: Record<string, boolean>
   /** how you chose to sign in on the setup screen ('' = Claude Code's own sign-in, as before) */
-  signInMethod: '' | 'subscription' | 'token' | 'apiKey'
+  signInMethod: '' | 'subscription' | 'token' | 'apiKey' | 'deepseek'
+  /** the harness new chats run on: Claude Code, or DeepSeek Harness (dsh). Each chat can switch. */
+  defaultEngine: Engine
+  /** DeepSeek Harness: model for new chats ('' = its default), as dsh names it, e.g. ["deepseek-official","deepseek-v4-pro"] */
+  deepseekModel: string
+  /** DeepSeek Harness reasoning effort ('' = its default) */
+  deepseekEffort: '' | 'off' | 'low' | 'high' | 'max'
+  /** how to start dsh: '' finds it (installed by LocalClaude, npm global, or dsh on PATH); else a command or a path to its lib/bin.js */
+  deepseekCommand: string
   /** desktop notification when Claude finishes or needs you while LocalClaude isn't focused */
   notifications: boolean
   /** name new chats with a short AI-written title after the first reply (one small Haiku request) */
@@ -104,9 +112,16 @@ export interface AppSettings {
   appendSystemPrompt: string
 }
 
+/** The agent harness a chat runs on. */
+export type Engine = 'claude' | 'deepseek'
+
 export interface SessionMeta {
   id: string // SDK session id (UUID) once known, else a local temp id
   sdkSessionId?: string
+  /** the harness this chat runs on (undefined = Claude Code); sdkSessionId is then that harness's session */
+  engine?: Engine
+  /** switched from the other engine and not answered there yet: the earlier messages go along as context once */
+  switchedFrom?: Engine
   title: string
   cwd: string
   additionalDirs: string[]
@@ -309,6 +324,8 @@ export interface AuthStatus {
   oauthTokenSaved?: boolean
   /** signed in with a Console API key only (no Claude subscription): everything bills the key */
   apiKeyOnly?: boolean
+  /** a DeepSeek API key is saved in LocalClaude, or DEEPSEEK_API_KEY is set. Never the key itself. */
+  deepseekKey?: 'saved' | 'env'
   email?: string
   subscriptionType?: string
   error?: string
@@ -380,6 +397,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   remoteSpawn: 'same-dir',
   remotePermissionMode: '',
   appendSystemPrompt: '',
+  defaultEngine: 'claude',
+  deepseekModel: '',
+  deepseekEffort: '',
+  deepseekCommand: '',
   appearance: DEFAULT_APPEARANCE,
   keybindings: {},
   mods: {},

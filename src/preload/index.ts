@@ -34,8 +34,10 @@ import type {
   RewindRequest,
   SendPayload,
   SessionMeta,
-  VaultStatus
+  VaultStatus,
+  Engine
 } from '../shared/types'
+import type { DeepSeekInstallEvent, DeepSeekStatus } from '../shared/deepseek'
 
 /** Memory after a change, plus the updated project when it was project memory. */
 type MemoryState = { items: MemoryItem[]; project?: Project }
@@ -65,6 +67,13 @@ const api = {
   saveOAuthToken: (token: string) => inv<{ ok: boolean; error?: string }>('oauthToken:save', token),
   removeOAuthToken: () => inv<{ ok: boolean }>('oauthToken:remove'),
   useApiKey: (key: string) => inv<{ ok: boolean; error?: string; warning?: string }>('auth:useApiKey', key),
+  useDeepSeek: (key: string) => inv<{ ok: boolean; error?: string; warning?: string }>('auth:useDeepSeek', key),
+  deepseekStatus: () => inv<DeepSeekStatus>('deepseek:status'),
+  saveDeepSeekKey: (key: string) => inv<{ ok: boolean; error?: string; warning?: string }>('deepseek:saveKey', key),
+  removeDeepSeekKey: () => inv<{ ok: boolean }>('deepseek:removeKey'),
+  installDeepSeek: () => inv<void>('deepseek:install'),
+  onDeepSeekInstall: (cb: (e: DeepSeekInstallEvent) => void) => on<DeepSeekInstallEvent>('deepseek:install', cb),
+  deepseekModels: () => inv<{ value: string; displayName: string; description: string }[]>('deepseek:models'),
   onLogin: (cb: (e: LoginEvent) => void) => on<LoginEvent>('login:event', cb),
 
   getSettings: () => inv<AppSettings>('settings:get'),
@@ -83,6 +92,7 @@ const api = {
     inv<void>('chat:respond', sessionId, requestId, d),
   setMode: (id: string, mode: PermissionModeUI) => inv<void>('chat:setMode', id, mode),
   setModel: (id: string, model: string) => inv<void>('chat:setModel', id, model),
+  setEngine: (id: string, engine: Engine) => inv<SessionMeta>('chat:setEngine', id, engine),
   setDirs: (id: string, dirs: string[]) => inv<void>('chat:setDirs', id, dirs),
   listModels: () => inv<{ value: string; displayName: string; description: string }[]>('models:list'),
   rewindPreview: (id: string, messageId: string) => inv<RewindPreview>('chat:rewindPreview', id, messageId),

@@ -6,6 +6,7 @@ import type { SessionRuntime } from '../App'
 import { api } from '../api'
 import { allStyles } from '../../../shared/styles'
 import { designKind } from '../../../shared/design'
+import { DEEPSEEK_EFFORTS, DEEPSEEK_MODELS, ENGINES, deepseekModelLabel } from '../../../shared/deepseek'
 import { ArtifactPanel, type PanelState } from './ArtifactPanel'
 import { ChoiceDialog } from './ChoiceDialog'
 import { DesignCanvas, type PendingFrame } from './DesignCanvas'
@@ -232,9 +233,14 @@ export function ChatView(props: {
     return () => window.removeEventListener('focus', refreshGit)
   }, [refreshGit])
 
+  const deepseek = meta.engine === 'deepseek'
+  const [dsModels, setDsModels] = useState(DEEPSEEK_MODELS)
   useEffect(() => {
     void api.listModels().then((m) => {
       if (m.length) setModels([MODEL_ALIASES[0], ...m.filter((x) => x.value && x.value !== 'default')])
+    })
+    void api.deepseekModels().then((m) => {
+      if (m.length) setDsModels([DEEPSEEK_MODELS[0], ...m])
     })
   }, [runtime.init])
 
@@ -401,8 +407,14 @@ export function ChatView(props: {
     : []
   const mode = MODES.find((m) => m.value === meta.permissionMode) ?? MODES[0]
   const rl = props.rateLimit
-  const modelLabel = meta.model ? (models.find((m) => m.value === meta.model)?.displayName ?? prettyModel(meta.model)) : prettyModel(runtime.init?.model)
-  const effortLabel = EFFORTS.find((e) => e.value === props.settings.effort && e.value)?.label
+  const modelLabel = deepseek
+    ? deepseekModelLabel(meta.model || runtime.init?.model || '', dsModels)
+    : meta.model
+      ? (models.find((m) => m.value === meta.model)?.displayName ?? prettyModel(meta.model))
+      : prettyModel(runtime.init?.model)
+  const effortLabel = deepseek
+    ? DEEPSEEK_EFFORTS.find((e) => e.value === props.settings.deepseekEffort && e.value)?.label
+    : EFFORTS.find((e) => e.value === props.settings.effort && e.value)?.label
 
   const designMenu: MenuEntry[] = [
     { key: 'rename', label: 'Rename', onSelect: () => setRenaming(meta.title) },
@@ -458,13 +470,40 @@ export function ChatView(props: {
     { key: 'delete', label: 'Delete chat', danger: true, onSelect: () => confirm(`Delete "${meta.title}"? This removes it from LocalClaude.`) && props.onDelete() }
   ]
 
-  const modelMenu: MenuEntry[] = [
-    { section: 'Model' },
-    ...models.map((m) => ({ key: 'm:' + m.value, label: m.displayName, hint: m.description, checked: meta.model === m.value, onSelect: () => void api.setModel(meta.id, m.value) })),
-    'divider',
-    { section: 'Effort' },
-    ...EFFORTS.map((e) => ({ key: 'e:' + e.value, label: e.label, checked: props.settings.effort === e.value, onSelect: () => void props.onSettings({ effort: e.value }) }))
-  ]
+  // the harness this chat runs on: switchable any time it isn't busy (earlier messages go along as context)
+  const switchEngine = (engine: 'claude' | 'deepseek'): void =>
+    void api.setEngine(meta.id, engine).then(props.onMeta, (e: unknown) => alert(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e)))
+  const engineEntries: MenuEntry[] = design
+    ? []
+    : [
+        { section: 'Harness' },
+        ...ENGINES.map((e) => ({
+          key: 'engine:' + e.value,
+          label: e.label,
+          hint: started && (meta.engine ?? 'claude') !== e.value ? 'Switch · keeps the chat' : e.hint,
+          checked: (meta.engine ?? 'claude') === e.value,
+          disabled: busy,
+          onSelect: () => switchEngine(e.value)
+        })),
+        'divider'
+      ]
+  const modelMenu: MenuEntry[] = deepseek
+    ? [
+        ...engineEntries,
+        { section: 'Model' },
+        ...dsModels.map((m) => ({ key: 'm:' + m.value, label: m.displayName, hint: m.description, checked: meta.model === m.value, onSelect: () => void api.setModel(meta.id, m.value) })),
+        'divider',
+        { section: 'Reasoning' },
+        ...DEEPSEEK_EFFORTS.map((e) => ({ key: 'e:' + e.value, label: e.label, checked: props.settings.deepseekEffort === e.value, onSelect: () => void props.onSettings({ deepseekEffort: e.value }) }))
+      ]
+    : [
+        ...engineEntries,
+        { section: 'Model' },
+        ...models.map((m) => ({ key: 'm:' + m.value, label: m.displayName, hint: m.description, checked: meta.model === m.value, onSelect: () => void api.setModel(meta.id, m.value) })),
+        'divider',
+        { section: 'Effort' },
+        ...EFFORTS.map((e) => ({ key: 'e:' + e.value, label: e.label, checked: props.settings.effort === e.value, onSelect: () => void props.onSettings({ effort: e.value }) }))
+      ]
 
   const modeMenu: MenuEntry[] = MODES.map((m) => ({
     key: m.value,
@@ -863,16 +902,17 @@ export function ChatView(props: {
               {runtime.init && <McpButton sessionId={meta.id} servers={runtime.mcp} onOpenSettings={() => props.onOpenSettings('tools')} />}
               <SessionBillingTag apiKeySource={runtime.init?.apiKeySource} expectKey={props.consoleKey} />
               <div className="grow" />
-              <span className="disclaimer">{escHint ? 'Press Esc again to rewind' : 'Claude is AI and can make mistakes.'}</span>
+              <span className="disclaimer">{escHint ? 'Press Esc again to rewind' : deepseek ? 'DeepSeek is AI and can make mistakes.' : 'Claude is AI and can make mistakes.'}</span>
               <div className="grow" />
               <ContextRing usage={runtime.context} />
               <Menu
                 className="below-menu"
                 align="right"
                 direction="up"
-                title="Model and effort"
+                title={design ? 'Model and effort' : 'Harness, model and effort'}
                 trigger={
                   <>
+                    {deepseek && <span className="engine-tag" title="This chat runs on DeepSeek Harness">DeepSeek</span>}
                     <span className="model-name">{modelLabel}</span>
                     {effortLabel && <span className="muted">{effortLabel}</span>}
                   </>

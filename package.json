@@ -1,6 +1,6 @@
 {
   "name": "localclaude",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Personal desktop app for Claude, powered by Claude Code and your Claude subscription. Data stays on this machine.",
   "main": "out/main/index.js",
   "scripts": {
@@ -33,6 +33,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@agentclientprotocol/sdk": "^2.6.0",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

@@ -24,7 +24,8 @@ import type {
   RewindPreview,
   RewindRequest,
   SendPayload,
-  SessionMeta
+  SessionMeta,
+  Engine
 } from '../shared/types'
 import { agentEnv, resolveClaudeBinary } from './claude'
 import { ARTIFACT_TOOLS, createArtifactServer } from './artifacts'
@@ -43,6 +44,7 @@ import { resolveStyle } from '../shared/styles'
 import { log } from './log'
 import { MEMORY_TOOLS, createMemoryServer, memoryPrompt } from './memory'
 import type { SecureStore } from './store'
+import { DeepSeekSession } from './deepseek'
 
 /** forkAt value for a chat's first message: rewinding there starts a fresh transcript. */
 const FORK_START = 'start'
@@ -708,7 +710,7 @@ class AgentSession {
           // A pending conversation rewind is applied by this start; later starts resume normally.
           if (this.meta.resumeAt) this.touchMeta({ resumeAt: undefined })
           // An imported chat now has its own transcript, which includes the context we sent.
-          if (this.meta.imported) this.touchMeta({ imported: undefined })
+          if (this.meta.imported || this.meta.switchedFrom) this.touchMeta({ imported: undefined, switchedFrom: undefined })
           this.emitRaw({
             type: 'init',
             sessionId: sid,
@@ -1018,8 +1020,10 @@ function friendlyError(text: string): string {
 }
 
 export class SessionManager {
-  private sessions = new Map<string, AgentSession>()
+  private sessions = new Map<string, AgentSession | DeepSeekSession>()
   models: { value: string; displayName: string; description: string }[] = []
+  /** DeepSeek Harness's models, as the last dsh session listed them */
+  deepseekModels: { value: string; displayName: string; description: string }[] = []
   private deps: SessionDeps
   /** full-text search over every chat */
   readonly index: ChatIndex
@@ -1037,11 +1041,19 @@ export class SessionManager {
     return this.index.search(query, { limit: 40 })
   }
 
-  private get(id: string): AgentSession {
+  private get(id: string): AgentSession | DeepSeekSession {
     let s = this.sessions.get(id)
     if (!s) {
       const meta = this.store.getSession(id)
       if (!meta) throw new Error('Unknown session ' + id)
+      if (meta.engine === 'deepseek') {
+        const ds = new DeepSeekSession(meta, this.store, this.emit, () => this.store.getSettings(), {
+          titleFor: this.deps.titleFor,
+          onModels: (m) => (this.deepseekModels = m)
+        })
+        this.sessions.set(id, ds)
+        return ds
+      }
       s = new AgentSession(
         meta,
         this.store,
@@ -1056,6 +1068,48 @@ export class SessionManager {
       this.sessions.set(id, s)
     }
     return s
+  }
+
+  /**
+   * Move a chat to the other harness. Before its first message that's all; later, the chat's
+   * messages stay where they are and go to the new harness as context with your next message.
+   */
+  setEngine(id: string, engine: Engine): SessionMeta {
+    const s = this.get(id)
+    const from: Engine = s.meta.engine ?? 'claude'
+    if (from === engine || s.meta.design) return s.meta
+    if (s.running) throw new Error('Wait for the reply to finish, or stop it, before switching.')
+    s.flush()
+    s.shutdown()
+    this.sessions.delete(id)
+    const st = this.store.getSettings()
+    const started = !!s.meta.sdkSessionId || s.history.some((m) => m.role === 'user')
+    // rewinding into the other harness's turns isn't possible, so earlier messages lose their rewind points
+    if (started) this.store.saveHistory(id, s.history.map((m) => (m.role === 'user' && (m.uuid || m.forkAt) ? { ...m, uuid: undefined, forkAt: undefined } : m)))
+    const meta: SessionMeta = {
+      ...s.meta,
+      engine: engine === 'claude' ? undefined : engine,
+      sdkSessionId: undefined,
+      tip: undefined,
+      resumeAt: undefined,
+      imported: started || undefined,
+      switchedFrom: started ? from : undefined,
+      model: engine === 'deepseek' ? st.deepseekModel : st.defaultModel,
+      updatedAt: Date.now()
+    }
+    this.store.upsertSession(meta)
+    const next = this.get(id)
+    if (started) {
+      this.emit({ type: 'history-reset', sessionId: id, history: next.history })
+      const label = engine === 'deepseek' ? 'DeepSeek Harness' : 'Claude Code'
+      const msg: ChatMessage = { id: 'sys-' + randomUUID(), role: 'system', parts: [{ kind: 'text', text: `Switched to ${label}. Your earlier messages go along as context with your next message.` }], ts: Date.now() }
+      next.history = [...next.history, msg]
+      this.store.saveHistory(id, next.history)
+      this.emit({ type: 'message-start', sessionId: id, message: msg })
+    }
+    this.emit({ type: 'meta', meta })
+    this.emit({ type: 'status', sessionId: id, status: 'idle' })
+    return meta
   }
 
   /** Plan usage: through a running chat if there is one, else a short-lived Claude Code process. */
@@ -1077,7 +1131,8 @@ export class SessionManager {
       projectId: project?.id,
       cwd: cwd || project?.cwd || st.defaultCwd,
       additionalDirs: [],
-      model: st.defaultModel,
+      engine: !design && st.defaultEngine === 'deepseek' ? 'deepseek' : undefined,
+      model: !design && st.defaultEngine === 'deepseek' ? st.deepseekModel : st.defaultModel,
       permissionMode: st.defaultPermissionMode,
       titleSource: 'auto',
       createdAt: Date.now(),

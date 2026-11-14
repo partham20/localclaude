@@ -396,6 +396,17 @@
 .model-name {
   font-weight: 500;
 }
+/* a chat on DeepSeek Harness says so next to its model */
+.engine-tag {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 1px 6px;
+  margin-right: 6px;
+  border-radius: 999px;
+  color: var(--engine-deepseek, #4d6bfe);
+  background: color-mix(in srgb, var(--engine-deepseek, #4d6bfe) 14%, transparent);
+}
 .below-menu.mode-acceptEdits > .menu-trigger {
   color: var(--mode-edits);
 }

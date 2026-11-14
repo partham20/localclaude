@@ -18,6 +18,7 @@ Everything runs and is stored **on this machine only**. Chats, settings and MCP 
 | Checkpoints & rewind | Hover a message → Rewind (or Esc Esc): restore the code, the conversation, or both to before that message |
 | Artifacts | Claude makes web pages, React apps, SVG, Mermaid diagrams, documents and code in a side panel with Preview/Code, version history, copy, download and open in your browser. When a preview hits an error, **Fix with Claude** sends it to Claude. The Artifacts page lists every artifact from every chat. Stored encrypted with the chat; previews run in a sandboxed frame (React/Mermaid load their libraries from public CDNs) |
 | Design | Like Claude Design: on the Design page, pick a prototype, slide deck, wireframe, one-pager or anything else, describe it (add screenshots for reference), and Claude designs it on a board beside the chat. Every screen, slide or board is a frame, in rows by section; drag a box to select frames (Shift+click adds, Ctrl+A selects all), pan with the wheel, Space+drag or the hand tool, zoom with Ctrl+wheel or a pinch. A frame builds up live while Claude writes it; for three or more, Claude writes a design system first and then all the screens at the same time, one subagent each. Open a frame to use it (at its own size, or desktop, tablet and mobile), step through them or **Present**, and switch between versions. Turn on **Comment** and click any part of a frame to tell Claude what to change there. Export a frame as PNG (at 2×), PDF or HTML, or every frame as one PDF (a deck, a page per slide). **Match a codebase's style** has Claude read a folder's colors, fonts and components first; **Build it in code** starts a chat in your project's folder that builds the design there. A design leaves out your MCP servers, Chrome and computer use, so it starts quickly |
+| DeepSeek Harness | A second harness: chats can run on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) with DeepSeek models instead of Claude Code, in the same chat window with the same tool cards and permission prompts. Switch any chat from its model menu or with Ctrl+K → *Switch harness*, even mid-conversation (the earlier messages go along). See [DeepSeek Harness](#deepseek-harness) |
 | Projects | Group chats with shared instructions, knowledge, memory and a working folder. Knowledge files can be PDFs, Word, PowerPoint and Excel files, notes, code or data; when there's too much to send with every message Claude searches it instead. Link a folder (like part of your Obsidian vault) and it stays in sync. The project page shows how much of Claude's context it uses and lists every artifact from its chats |
 | Obsidian | Link your vault (found automatically) and it becomes LocalClaude's knowledge store: Claude searches and reads your notes in any chat, saves notes when you ask, and your chats (with images) and memory are kept as notes. One switch in Settings → Obsidian turns it all off without unlinking |
 | Files changed | A side panel lists every file Claude edited in the chat with its diffs, open it (or in VS Code), and undo the changes |
@@ -186,6 +187,23 @@ Never commit the key. Check the Console after a small test message to confirm wh
 
 Anthropic currently lets the Agent SDK use your subscription's normal usage limits for personal projects like this. They announced, then paused, a plan to move SDK usage to a separate monthly credit; if that returns, this app would draw from that credit instead. Don't distribute builds for other people to sign in with; that needs Anthropic's approval.
 
+## DeepSeek Harness
+
+LocalClaude can run a chat on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), DeepSeek's open-source coding agent, instead of Claude Code. You can use it with no Claude account at all (pick **DeepSeek Harness** on the setup screen), or next to your subscription and switch per chat.
+
+1. **Get dsh.** In **Settings → DeepSeek**, click **Install DeepSeek Harness**: it goes into LocalClaude's own folder (about 1 GB; it needs `npm` from Node.js to download). Or install it yourself with `npm i -g @deepseek-ai/dsh`. LocalClaude finds its own copy, then npm's global folder, then a `dsh` command on your PATH, or you can give the command in Settings.
+2. **Add your DeepSeek API key** (from [platform.deepseek.com](https://platform.deepseek.com/api_keys)) on the setup screen or in Settings → DeepSeek. It's kept in the encrypted vault like the Console key and passed to dsh as `DEEPSEEK_API_KEY`. A `DEEPSEEK_API_KEY` in your environment wins over the saved one.
+3. **Pick where new chats go**: *New chats use* in Settings → DeepSeek, or Ctrl+K → *Switch harness: new chats use…*. Each chat's model menu has a **Harness** section to switch that chat.
+
+How it works: each open DeepSeek chat starts `dsh --profile acp` and talks to it over the [Agent Client Protocol](https://agentclientprotocol.com). dsh needs Node 24.9+, which Electron already ships, so when LocalClaude can find dsh's files it runs dsh on its own runtime and you don't need a newer Node. dsh's sessions are resumed when the chat reopens.
+
+- **Billing:** DeepSeek chats bill your DeepSeek account, never your Claude plan.
+- **Models and reasoning:** the model menu lists dsh's own models (V4 Flash, V4 Pro…) and its reasoning levels (Off, Low, High, Max).
+- **Permissions:** dsh runs tools in its own sandbox. *Ask permissions*, *Auto-accept edits* and *Auto* keep writes inside the chat's folder and ask before stepping outside it; *Plan mode* is read-only; *Full access* lifts the sandbox.
+- **Your MCP servers** (stdio and HTTP) are passed to dsh too. Your name, custom instructions and the project's instructions go with the first message.
+- **Switching harness** keeps the chat. The new harness gets the earlier messages as context with your next message; rewind points from before the switch go away.
+- **Not available in DeepSeek chats yet:** rewind, images, artifacts, memory and chat search (those are LocalClaude tools built for Claude Code). Designs always use Claude Code.
+
 ## How "this machine only" works
 
 - **Storage:** `vault/` in the app-data folder (Settings → About shows it). Every file is AES-256-GCM encrypted with a key derived (scrypt) from the OS machine ID (Windows `MachineGuid`, Linux `/etc/machine-id`). On top of that, Electron safeStorage adds Windows DPAPI or the Linux keyring.
@@ -217,14 +235,15 @@ npm test           # unit tests (LOCALCLAUDE_E2E=1 also sends one real message t
 npm run test:e2e   # builds the app and clicks through it with a scripted Claude
 ```
 
-`test:e2e` runs two suites: the app signed in, then the setup screen, Appearance, Keyboard, the command palette and the example mod (signed out, `node test/e2e/launch.mjs --setup` runs just that one).
+`test:e2e` runs three suites: the app signed in; the setup screen, Appearance, Keyboard, the command palette and the example mod (signed out, `node test/e2e/launch.mjs --setup` runs just that one); and DeepSeek Harness with a scripted dsh that speaks ACP (`--deepseek`).
 
-The end-to-end tests run the real app (main process, preload and UI) with a stand-in for Claude Code that speaks the same protocol, in a throwaway profile, so they need no account or network. Set `LOCALCLAUDE_E2E_SHOTS=folder` to save screenshots. CI runs both on Windows and Linux.
+The end-to-end tests run the real app (main process, preload and UI) with a stand-in for Claude Code that speaks the same protocol, in a throwaway profile, so they need no account or network. Set `LOCALCLAUDE_E2E_SHOTS=folder` to save screenshots. CI runs them on Windows and Linux.
 
 ## Project layout
 
 ```
-src/main/agent.ts       Agent SDK sessions → UI events, permissions, interrupt, resume
+src/main/agent.ts       Agent SDK sessions → UI events, permissions, interrupt, resume; switching a chat's harness
+src/main/deepseek.ts    DeepSeek Harness chats: finding/installing dsh, ACP over stdio → UI events
 src/main/claude.ts      bundled binary lookup, subscription-only env, sign-in (browser, token, key)
 src/main/mods.ts        the mods folder: reading mod.json, CSS and themes, serving scripts (lcmod://)
 src/main/computer.ts    computer-use MCP tool (screenshots, mouse, keyboard)
@@ -243,7 +262,7 @@ src/main/backup.ts      password-protected and automatic backups
 src/main/exporter.ts    Markdown/ZIP exports and import
 src/main/git.ts         branch, changes and worktrees
 src/main/mcpCheck.ts    testing MCP servers from Settings
-src/main/fakeAgent.ts   the scripted Claude used by the end-to-end tests
+src/main/fakeAgent.ts   the scripted Claude used by the end-to-end tests (test/e2e/fake-dsh.mjs is the scripted dsh)
 src/preload/            safe bridge (contextIsolation + sandbox)
 src/shared/             types + the chat reducer used by both processes
 src/shared/customize.ts themes, colors, keyboard shortcuts, mod manifests

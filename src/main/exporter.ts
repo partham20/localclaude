@@ -3,7 +3,7 @@
 // the ZIP lets you import it back into LocalClaude, on this machine or another one.
 import { ARTIFACT_LABEL, artifactExt, artifactLang, estimateTokens, fenced, safeFileName } from '../shared/format'
 import { editDiff, isArtifactTool, parsedInput, plural, short, stepText, summarize, type Step, type ToolPart } from '../shared/steps'
-import type { Artifact, ChatMessage, ExportOptions, ImageRef, ImportResult, MemoryItem, Project, ProjectContextUsage, SessionMeta } from '../shared/types'
+import type { Artifact, ChatMessage, Engine, ExportOptions, ImageRef, ImportResult, MemoryItem, Project, ProjectContextUsage, SessionMeta } from '../shared/types'
 import { renderArtifactPage } from './artifacts'
 import { IMAGE_EXT, referencedImages } from './images'
 import { PROJECT_KNOWLEDGE_LIMIT_CHARS } from './limits'
@@ -228,14 +228,21 @@ export function chatMarkdown(meta: SessionMeta, history: ChatMessage[], opts: Ex
   return out.join('\n').trimEnd() + '\n'
 }
 
-/** The earlier messages of an imported chat, sent to Claude once as context. */
-export function importedContext(meta: SessionMeta, history: ChatMessage[]): string {
+/**
+ * The earlier messages of a chat whose transcript this engine doesn't have, sent once as context:
+ * restored from an export, or switched over from the other engine (Claude Code ⇄ DeepSeek Harness).
+ */
+export function importedContext(meta: SessionMeta, history: ChatMessage[], engine: Engine = 'claude'): string {
   const LIMIT = 120_000
   let md = chatMarkdown(meta, history, { tools: 'summary', thinking: false, artifacts: 'none', knowledge: false, backup: false })
   if (md.length > LIMIT) md = '… (earlier messages omitted)\n\n' + md.slice(-LIMIT)
+  const why = meta.switchedFrom
+    ? `This chat was switched to you from ${meta.switchedFrom === 'deepseek' ? 'DeepSeek Harness' : 'Claude Code'}`
+    : 'This chat was restored from a LocalClaude export'
   return (
-    "This chat was restored from a LocalClaude export, so its earlier messages aren't in your context. Here they are for reference; continue the conversation from there.\n" +
-    `<previous_conversation>\n${md}\n</previous_conversation>`
+    `${why}, so its earlier messages aren't in your context. Here they are for reference; continue the conversation from there.` +
+    (engine === 'deepseek' && meta.switchedFrom ? ' Tool calls in it were made by the other harness.' : '') +
+    `\n<previous_conversation>\n${md}\n</previous_conversation>`
   )
 }
 
