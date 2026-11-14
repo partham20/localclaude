@@ -1,6 +1,7 @@
 // End-to-end steps, run in order against one app instance (see run.mjs). Each step drives the real UI.
 import { join } from 'node:path'
-import { makeDocx, makePdf, mcpServerScript } from './files.mjs'
+import { startOAuthMcp } from './fake-oauth-mcp.mjs'
+import { makeDocx, makePdf, makeZip, mcpServerScript } from './files.mjs'
 
 const lastTurnId = "(__t.qa('.turn').at(-1)?.dataset.turn ?? '')"
 /** Click a frame on the design board (a press and release without moving, which picks it). */
@@ -556,7 +557,7 @@ export const steps = [
     run: async (c) => {
       const script = c.file('weather-mcp.mjs')
       c.write(script, mcpServerScript())
-      await c.openSettings('Tools')
+      await c.openSettings('Connectors')
       await c.page("__t.click(__t.byText('.mcp-manager .btn', 'Add a server'))")
       await c.waitFor('form', "!!__t.q('.mcp-form')")
       await c.page(`__t.setValue(__t.q('.mcp-form input[name="name"]'), 'weather')`)
@@ -580,6 +581,133 @@ export const steps = [
       await c.page("__t.click(__t.byText('.mcp-form .btn', 'Save'))")
       await c.waitFor('a name LocalClaude uses is refused', "__t.text('.mcp-form').includes('used by LocalClaude itself')")
       await c.page("__t.click(__t.byText('.mcp-form .btn', 'Cancel'))")
+      await c.closeModal()
+    }
+  },
+  {
+    name: 'Connectors: sign in to a server that wants OAuth, sign out, a popular connector, copy one from Claude Code',
+    run: async (c) => {
+      const oauth = await startOAuthMcp()
+      try {
+        await c.page('window.confirm = () => true; true')
+        await c.openSettings('Connectors')
+        await c.page("__t.click(__t.byText('.mcp-manager .btn', 'Add a server'))")
+        await c.page(`(() => { const t = __t.q('.mcp-form select[name="type"]'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(t, 'http'); t.dispatchEvent(new Event('change', { bubbles: true })); return true })()`)
+        await c.page(`__t.setValue(__t.q('.mcp-form input[name="name"]'), 'secure')`)
+        await c.page(`__t.setValue(__t.q('.mcp-form input[name="url"]'), ${JSON.stringify(oauth.url)})`)
+        await c.page("__t.click(__t.byText('.mcp-form .btn', 'Save'))")
+        await c.waitFor('listed', "!!__t.q('.mcp-server .mcp-server-name') && __t.byText('.mcp-server', 'secure') && !__t.q('.mcp-form')")
+        const row = "__t.qa('.mcp-manager .mcp-server').find((r) => r.querySelector('.mcp-server-name')?.textContent === 'secure')"
+        await c.page(`__t.click(${row}.querySelector('button[title^="Test"]'))`)
+        await c.waitFor('it wants you to sign in', `${row}.innerText.includes('wants you to sign in') && ${row}.querySelector('button[name=signIn]').classList.contains('primary')`, 30000)
+        // Sign in: the browser opens the server's sign-in page, which sends you back to LocalClaude
+        const before = c.opened.length
+        await c.page(`__t.click(${row}.querySelector('button[name=signIn]'))`)
+        await c.until('the sign-in page opened', () => c.opened.slice(before).some((u) => u.startsWith(oauth.base + '/authorize')), 20000)
+        const authUrl = c.opened.slice(before).find((u) => u.startsWith(oauth.base + '/authorize'))
+        const back = await fetch(authUrl)
+        if (!(await back.text()).includes('Signed in')) throw new Error('the redirect back to LocalClaude did not sign in')
+        await c.waitFor('signed in', `!!${row}.querySelector('button[name=signOut]') && __t.text('.connectors-note').includes('Signed in')`, 20000)
+        if (oauth.state.registered !== 1 || oauth.state.tokens !== 1) throw new Error(`registered ${oauth.state.registered}, tokens ${oauth.state.tokens}`)
+        // the token reaches the server: Test connects now
+        await c.page(`__t.click(${row}.querySelector('button[title^="Test"]'))`)
+        await c.waitFor('connected with the token', `${row}.innerText.includes('Connected to e2e-secure · 1 tool')`, 30000)
+        if (oauth.state.lastAuthorization !== 'Bearer access-1') throw new Error('no token sent: ' + oauth.state.lastAuthorization)
+        await c.shot('connectors-signed-in')
+        await c.page(`__t.click(${row}.querySelector('button[name=signOut]'))`)
+        await c.waitFor('signed out', `!!${row}.querySelector('button[name=signIn]')`)
+        // a popular connector that needs no sign-in: one click
+        await c.page(`__t.click(__t.q('.connector-card[data-connector="context7"] .btn'))`)
+        await c.waitFor('added', `__t.qa('.mcp-manager .mcp-server-name').some((n) => n.textContent === 'context7') && __t.text('.connector-card[data-connector="context7"] .btn') === 'Added'`)
+        await c.closeModal()
+        // a server Claude Code has: copied, so DeepSeek chats get it too
+        c.write(c.file('claude-config.json'), JSON.stringify({ mcpServers: { 'cc-weather': { command: 'node', args: ['weather.mjs'] } }, projects: {} }))
+        await c.openSettings('Connectors')
+        await c.waitFor('listed from Claude Code', `!!__t.q('[data-claude-server="cc-weather"]')`)
+        await c.page(`__t.click(__t.q('[data-claude-server="cc-weather"] .btn'))`)
+        await c.waitFor('copied', `__t.qa('.mcp-manager .mcp-server-name').some((n) => n.textContent === 'cc-weather') && __t.text('[data-claude-server="cc-weather"] .btn') === 'Copied'`)
+        // leave chats without servers that aren't there
+        await c.page(`window.api.getSettings().then((s) => { const m = { ...s.mcpServers }; delete m['cc-weather']; delete m.context7; delete m.secure; return window.api.setSettings({ mcpServers: m }) }).then(() => true)`)
+        await c.closeModal()
+      } finally {
+        await oauth.close()
+      }
+    }
+  },
+  {
+    name: 'Skills: create one, edit it, switch it off, add one from a .zip, delete',
+    run: async (c) => {
+      const skills = c.file('claude-home/skills')
+      await c.page('window.confirm = () => true; true')
+      await c.openSettings('Skills')
+      await c.waitFor('skills listed', "!!__t.q('.skills-panel') && !__t.text('.skills-panel').includes('Looking for skills')")
+      await c.page("__t.click(__t.q('button[name=newSkill]'))")
+      await c.page(`__t.setValue(__t.q('input[name=skillName]'), 'Release Notes')`)
+      await c.page(`__t.setValue(__t.q('textarea[name=skillDescription]'), 'Write release notes from the git log.')`)
+      await c.page(`__t.setValue(__t.q('textarea[name=skillBody]'), '# Release notes\\n\\nGroup changes by feature.')`)
+      await c.page("__t.click(__t.q('button[name=saveSkill]'))")
+      await c.waitFor('created', `!!__t.q('[data-skill="release-notes"]') && !__t.q('.skill-form')`)
+      await c.until('written to the skills folder', () => c.read(c.file('claude-home/skills/release-notes/SKILL.md')).toString().includes('description: "Write release notes from the git log."'))
+      await c.page(`__t.click(__t.byText('[data-skill="release-notes"] .btn', 'Edit'))`)
+      await c.waitFor('the editor has it', `__t.q('textarea[name=skillBody]')?.value.includes('Group changes by feature.')`)
+      await c.page(`__t.setValue(__t.q('textarea[name=skillDescription]'), 'Write release notes. Use for changelogs.')`)
+      await c.page("__t.click(__t.q('button[name=saveSkill]'))")
+      await c.waitFor('saved', `__t.text('[data-skill="release-notes"]').includes('Use for changelogs.') && !__t.q('.skill-form')`)
+      await c.page(`__t.click(__t.q('[data-skill="release-notes"] .mcp-switch input'))`)
+      await c.waitFor('switched off', `__t.q('[data-skill="release-notes"]').classList.contains('off')`)
+      const s = await c.page('window.api.getSettings()')
+      if (JSON.stringify(s.disabledSkills) !== '["release-notes"]') throw new Error('disabledSkills: ' + JSON.stringify(s.disabledSkills))
+      // from a .zip, with the skill in a folder inside it
+      const zip = c.file('pdf-tools.zip')
+      c.write(zip, makeZip([
+        { name: 'pdf-tools/SKILL.md', data: '---\nname: pdf-tools\ndescription: >\n  Fill in and merge PDFs.\n  Use for any PDF.\n---\nUse scripts/merge.py.' },
+        { name: 'pdf-tools/scripts/merge.py', data: 'print("merge")' }
+      ]))
+      c.answers.push(zip)
+      await c.page("__t.click(__t.q('button[name=importSkill]'))")
+      await c.waitFor('added from the zip', `__t.text('[data-skill="pdf-tools"]').includes('Fill in and merge PDFs. Use for any PDF.')`)
+      await c.until('its files too', () => c.exists(c.file('claude-home/skills/pdf-tools/scripts/merge.py')))
+      await c.shot('skills')
+      await c.page(`__t.click(__t.byText('[data-skill="release-notes"] .btn', 'Delete'))`)
+      await c.waitFor('deleted', `!__t.q('[data-skill="release-notes"]')`)
+      await c.until('gone from the folder', () => !c.exists(c.file('claude-home/skills/release-notes')))
+      if (!c.exists(skills)) throw new Error('the skills folder went too')
+      await c.closeModal()
+    }
+  },
+  {
+    name: 'Plugins: add a marketplace, find and install a plugin, its skill shows up, switch it off, uninstall',
+    run: async (c) => {
+      // a marketplace in a folder, with one plugin that has a skill and an MCP server
+      const m = c.file('market')
+      c.mkdir(c.file('market/.claude-plugin'))
+      c.mkdir(c.file('market/plugins/hello/.claude-plugin'))
+      c.mkdir(c.file('market/plugins/hello/skills/greet'))
+      c.write(c.file('market/.claude-plugin/marketplace.json'), JSON.stringify({ name: 'e2e-market', owner: { name: 'E2E' }, plugins: [{ name: 'hello', source: './plugins/hello', description: 'Says hello', version: '1.0.0' }] }))
+      c.write(c.file('market/plugins/hello/.claude-plugin/plugin.json'), JSON.stringify({ name: 'hello', version: '1.0.0', description: 'Says hello' }))
+      c.write(c.file('market/plugins/hello/skills/greet/SKILL.md'), '---\nname: greet\ndescription: Greet the user warmly\n---\nSay hello.\n')
+      c.write(c.file('market/plugins/hello/.mcp.json'), JSON.stringify({ mcpServers: { hi: { command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/hi.js'] } } }))
+      await c.page('window.confirm = () => true; true')
+      await c.openSettings('Plugins')
+      await c.waitFor('nothing installed', "__t.text('.plugins-panel').includes('No plugins yet')", 60000)
+      await c.page(`__t.setValue(__t.q('input[name=marketplaceSource]'), ${JSON.stringify(m)})`)
+      await c.page("__t.click(__t.q('button[name=addMarketplace]'))")
+      await c.waitFor('marketplace added', `!!__t.q('[data-marketplace="e2e-market"]')`, 60000)
+      await c.page("__t.click(__t.q('button[name=browsePlugins]'))")
+      await c.waitFor('plugins listed', "!!__t.q('input[name=pluginSearch]')", 120000)
+      await c.page(`__t.setValue(__t.q('input[name=pluginSearch]'), 'says hello')`)
+      await c.waitFor('found', `!!__t.q('[data-available="hello@e2e-market"]')`)
+      await c.page(`__t.click(__t.q('[data-available="hello@e2e-market"] .btn'))`)
+      await c.waitFor('installed', `__t.text('[data-plugin="hello@e2e-market"]').includes('1 skill · 1 MCP server') && __t.text('[data-available="hello@e2e-market"] .btn') === 'Installed'`, 90000)
+      await c.shot('plugins')
+      await c.page(`__t.click(__t.q('.nav-item[data-tab="skills"]'))`)
+      await c.waitFor('its skill on the Skills page', `__t.text('[data-skill="hello:greet"]').includes('Greet the user warmly')`)
+      await c.page(`__t.click(__t.q('.nav-item[data-tab="plugins"]'))`)
+      await c.waitFor('plugins again', `!!__t.q('[data-plugin="hello@e2e-market"]')`, 60000)
+      await c.page(`__t.click(__t.q('[data-plugin="hello@e2e-market"] .mcp-switch input'))`)
+      await c.waitFor('switched off', `__t.q('[data-plugin="hello@e2e-market"]')?.classList.contains('off')`, 60000)
+      await c.page(`__t.click(__t.byText('[data-plugin="hello@e2e-market"] .btn', 'Uninstall'))`)
+      await c.waitFor('uninstalled', `!__t.q('[data-plugin="hello@e2e-market"]') && __t.text('.plugins-panel').includes('No plugins yet')`, 60000)
       await c.closeModal()
     }
   },

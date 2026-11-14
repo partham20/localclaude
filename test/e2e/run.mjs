@@ -21,6 +21,8 @@ process.env.LOCALCLAUDE_TEST_MODE = '1'
 process.env.LOCALCLAUDE_OBSIDIAN_CONFIG = join(work, 'obsidian.json')
 // Claude Code's settings (folder trust) for Remote Control: a throwaway copy, not yours
 process.env.LOCALCLAUDE_CLAUDE_CONFIG = join(work, 'claude-config.json')
+// Claude Code's folder (skills, plugins, settings.json): a throwaway one, not your ~/.claude
+process.env.CLAUDE_CONFIG_DIR = join(work, 'claude-home')
 process.env.LOCALCLAUDE_MODS_DIR = join(work, 'mods')
 if (SUITE !== 'main') process.env.LOCALCLAUDE_FAKE_SIGNED_OUT = '1'
 // DeepSeek Harness: a scripted dsh instead of the real one, and never your own key

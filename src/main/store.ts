@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, w
 import { join } from 'node:path'
 import { readMachineId } from './machineId'
 import { normalizeAppearance } from '../shared/customize'
+import type { McpAuthRecord } from './mcpAuth'
 import { AppSettings, Artifact, ChatMessage, DEFAULT_SETTINGS, LockStatus, MemoryItem, Project, SessionMeta } from '../shared/types'
 
 interface Vault {
@@ -32,6 +33,8 @@ interface Vault {
   oauthToken?: string
   /** DeepSeek API key for DeepSeek Harness chats; same rules as the Console key */
   deepseekApiKey?: string
+  /** connectors you signed in to (OAuth), by server URL: never sent to the window, never in exports or backups */
+  mcpAuth?: Record<string, McpAuthRecord>
 }
 
 export interface BackupState {
@@ -287,6 +290,21 @@ export class SecureStore {
     if (key) this.vault.deepseekApiKey = key
     else delete this.vault.deepseekApiKey
     this.saveVault()
+  }
+
+  // ---------- connector sign-ins ----------
+  getMcpAuth(url: string): McpAuthRecord | undefined {
+    return this.vault?.mcpAuth?.[url]
+  }
+  setMcpAuth(url: string, rec: McpAuthRecord | undefined): void {
+    const all = { ...this.vault.mcpAuth }
+    if (rec) all[url] = rec
+    else delete all[url]
+    this.vault.mcpAuth = all
+    this.saveVault()
+  }
+  allMcpAuth(): Record<string, McpAuthRecord> {
+    return { ...this.vault?.mcpAuth }
   }
 
   // ---------- backups ----------

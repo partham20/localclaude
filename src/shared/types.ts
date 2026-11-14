@@ -26,6 +26,8 @@ export interface McpTestResult {
   server?: string
   ms?: number
   error?: string
+  /** the server wants you to sign in (OAuth) */
+  needsAuth?: boolean
 }
 
 export interface AppSettings {
@@ -47,6 +49,8 @@ export interface AppSettings {
   loadUserSettings: boolean
   loadProjectSettings: boolean
   mcpServers: Record<string, McpServerEntry>
+  /** skills switched off in LocalClaude (Settings → Skills), by the name Claude Code knows them by */
+  disabledSkills: string[]
   theme: 'system' | 'light' | 'dark'
   /** font for Claude's replies */
   replyFont: 'source-serif' | 'newsreader' | 'lora' | 'times' | 'georgia' | 'cambria' | 'sans'
@@ -375,6 +379,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   loadUserSettings: true,
   loadProjectSettings: true,
   mcpServers: {},
+  disabledSkills: [],
   theme: 'system',
   replyFont: 'source-serif',
   uiFont: 'dm-sans',

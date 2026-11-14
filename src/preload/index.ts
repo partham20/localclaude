@@ -38,6 +38,7 @@ import type {
   Engine
 } from '../shared/types'
 import type { DeepSeekInstallEvent, DeepSeekStatus } from '../shared/deepseek'
+import type { AvailablePlugin, ClaudeCodeMcpServer, McpAuthInfo, PluginAction, PluginActionResult, PluginState, SkillDraft, SkillInfo } from '../shared/extensions'
 
 /** Memory after a change, plus the updated project when it was project memory. */
 type MemoryState = { items: MemoryItem[]; project?: Project }
@@ -120,6 +121,22 @@ const api = {
   remoteTrust: () => inv<RemoteState>('remote:trust'),
   onRemote: (cb: (s: RemoteState) => void) => on<RemoteState>('remote:changed', cb),
   testMcpServer: (entry: McpServerEntry) => inv<McpTestResult>('mcp:test', entry),
+  signInMcp: (url: string) => inv<{ ok: boolean; error?: string }>('mcp:signIn', url),
+  cancelMcpSignIn: () => inv<void>('mcp:cancelSignIn'),
+  signOutMcp: (url: string) => inv<void>('mcp:signOut', url),
+  mcpAuth: () => inv<McpAuthInfo[]>('mcp:auth'),
+  claudeCodeMcpServers: () => inv<ClaudeCodeMcpServer[]>('mcp:claudeCode'),
+  listSkills: () => inv<SkillInfo[]>('skills:list'),
+  readSkill: (dir: string) => inv<SkillDraft>('skills:read', dir),
+  saveSkill: (d: SkillDraft) => inv<{ ok: true; dir: string } | { ok: false; error: string }>('skills:save', d),
+  deleteSkill: (dir: string) => inv<{ ok: boolean; error?: string }>('skills:delete', dir),
+  /** from: a folder or .zip/.skill file; null asks with a file dialog (null back if you cancel) */
+  importSkill: (from: string | null, replace?: boolean) =>
+    inv<({ ok: true; name: string } | { ok: false; error: string; exists?: string }) & { from: string } | null>('skills:import', from, replace),
+  revealSkills: () => inv<string>('skills:reveal'),
+  pluginState: () => inv<PluginState>('plugins:state'),
+  availablePlugins: () => inv<{ plugins: AvailablePlugin[]; error?: string }>('plugins:available'),
+  pluginAction: (a: PluginAction) => inv<PluginActionResult>('plugins:action', a),
   createWorktree: (sessionId: string, name: string) => inv<SessionMeta>('git:worktree', sessionId, name),
   openInEditor: (path: string) => inv<void>('files:openInEditor', path),
   setWindowTheme: (dark: boolean, colors?: { color?: string; symbolColor?: string }) => inv<void>('window:theme', dark, colors),

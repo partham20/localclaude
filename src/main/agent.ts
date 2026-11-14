@@ -1,6 +1,8 @@
 // Runs Claude Code sessions through the Agent SDK and translates its message
 // stream into UI events. One long-lived streaming query per open chat.
 import type { Options, PermissionResult, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { skillOverrides } from './extensions'
+import { withMcpAuth } from './mcpAuth'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
@@ -197,8 +199,10 @@ class AgentSession {
     // so it starts quickly and Claude goes straight to the design.
     const design = !!this.meta.design
     const mcpServers: Options['mcpServers'] = {}
-    for (const [name, cfg] of Object.entries(design ? {} : s.mcpServers)) {
-      if (cfg.enabled === false) continue
+    for (const [name, raw] of Object.entries(design ? {} : s.mcpServers)) {
+      if (raw.enabled === false) continue
+      // a connector you signed in to gets its token as a header
+      const cfg = withMcpAuth(this.store, raw)
       if (cfg.type === 'http' || cfg.type === 'sse') {
         mcpServers[name] = { type: cfg.type, url: cfg.url ?? '', headers: cfg.headers }
       } else if (cfg.command) {
@@ -281,7 +285,7 @@ class AgentSession {
       allowedTools: autoAllowed.length ? autoAllowed : undefined,
       // LocalClaude keeps memory and artifacts itself, encrypted on this machine. Claude Code's own
       // auto-memory files and its Artifact tool (which publishes pages to claude.ai) stay off here.
-      settings: { autoMemoryEnabled: false, enableArtifact: false },
+      settings: { autoMemoryEnabled: false, enableArtifact: false, ...(skillOverrides(s) && !design ? { skillOverrides: skillOverrides(s) } : {}) },
       mcpServers,
       // designs leave out the MCP servers from your Claude Code settings and plugins too
       strictMcpConfig: design || undefined,
