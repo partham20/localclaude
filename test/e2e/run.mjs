@@ -9,8 +9,9 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 // Two suites: the app as you use it (signed in), and 1.4's setup screen, themes and mods (signed out, LOCALCLAUDE_E2E_SUITE=setup).
-const SUITE = process.env.LOCALCLAUDE_E2E_SUITE === 'setup' ? 'setup' : 'main'
-const { steps } = await import(SUITE === 'setup' ? './setup-steps.mjs' : './steps.mjs')
+// A third (LOCALCLAUDE_E2E_SUITE=deepseek): DeepSeek Harness as the engine, with a scripted dsh, starting signed out.
+const SUITE = ['setup', 'deepseek'].includes(process.env.LOCALCLAUDE_E2E_SUITE) ? process.env.LOCALCLAUDE_E2E_SUITE : 'main'
+const { steps } = await import(SUITE === 'setup' ? './setup-steps.mjs' : SUITE === 'deepseek' ? './deepseek-steps.mjs' : './steps.mjs')
 
 const work = mkdtempSync(join(tmpdir(), 'lc-e2e-'))
 process.env.LOCALCLAUDE_USER_DATA = join(work, 'profile')
@@ -21,7 +22,10 @@ process.env.LOCALCLAUDE_OBSIDIAN_CONFIG = join(work, 'obsidian.json')
 // Claude Code's settings (folder trust) for Remote Control: a throwaway copy, not yours
 process.env.LOCALCLAUDE_CLAUDE_CONFIG = join(work, 'claude-config.json')
 process.env.LOCALCLAUDE_MODS_DIR = join(work, 'mods')
-if (SUITE === 'setup') process.env.LOCALCLAUDE_FAKE_SIGNED_OUT = '1'
+if (SUITE !== 'main') process.env.LOCALCLAUDE_FAKE_SIGNED_OUT = '1'
+// DeepSeek Harness: a scripted dsh instead of the real one, and never your own key
+process.env.LOCALCLAUDE_DSH = resolve('test/e2e/fake-dsh.mjs')
+delete process.env.DEEPSEEK_API_KEY
 
 // File dialogs take their answers from this queue, in order.
 const answers = []

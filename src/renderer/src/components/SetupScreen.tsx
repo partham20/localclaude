@@ -1,13 +1,14 @@
-// First run: choose how to sign in (Claude subscription, a subscription token, or a Console API key),
-// then pick a look. Secrets go straight to the main process and are kept in the encrypted vault.
+// First run: choose how to sign in (Claude subscription, a subscription token, a Console API key, or
+// DeepSeek Harness with a DeepSeek key), then pick a look. Secrets go straight to the main process and are kept in the encrypted vault.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ACCENT_SWATCHES, BUILTIN_THEMES, normalizeAppearance, type Appearance } from '../../../shared/customize'
 import type { AppSettings, AuthStatus } from '../../../shared/types'
 import { api } from '../api'
 import { Icon } from './Icon'
 import { Spark } from './Spark'
+import { DeepSeekInstall } from './DeepSeekSettings'
 
-type Method = 'subscription' | 'token' | 'apiKey'
+type Method = 'subscription' | 'token' | 'apiKey' | 'deepseek'
 type Step = 'choose' | Method | 'personalize'
 
 const METHODS: { id: Method; icon: string; title: string; body: string; badge?: string }[] = [
@@ -29,6 +30,12 @@ const METHODS: { id: Method; icon: string; title: string; body: string; badge?: 
     icon: 'key',
     title: 'Console API key',
     body: 'Pay as you go with a key from the Anthropic Console. No subscription needed.'
+  },
+  {
+    id: 'deepseek',
+    icon: 'terminal',
+    title: 'DeepSeek Harness',
+    body: 'Chat with DeepSeek models through the open-source dsh agent, using your DeepSeek API key. You can add Claude later and switch per chat.'
   }
 ]
 
@@ -78,6 +85,8 @@ function SecretForm(props: { placeholder: string; submit: string; busy: boolean;
 export function SetupScreen(props: {
   auth: AuthStatus
   settings: AppSettings
+  /** already usable (DeepSeek Harness set up): the screen can be left without signing in to Claude */
+  canSkip?: boolean
   onAuthChanged: () => Promise<void>
   onChange: (p: Partial<AppSettings>) => Promise<void>
   onFinish: () => void
@@ -159,6 +168,20 @@ export function SetupScreen(props: {
     }
   }
 
+  const saveDeepSeek = async (key: string): Promise<void> => {
+    setBusy(true)
+    setError(null)
+    try {
+      const r = await api.useDeepSeek(key)
+      if (!r.ok) return setError(r.error ?? 'That key didn’t work.')
+      if (r.warning) setWarning(r.warning)
+      await props.onAuthChanged()
+      setStep('personalize')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const a = normalizeAppearance(props.settings.appearance)
   const setLook = (patch: Partial<Appearance>): void => void props.onChange({ appearance: { ...a, ...patch } })
 
@@ -208,6 +231,11 @@ export function SetupScreen(props: {
             <button className="btn primary big setup-continue" onClick={() => go(method)}>
               Continue <Icon name="forward" size={16} />
             </button>
+            {props.canSkip && (
+              <button className="btn ghost setup-skip" onClick={props.onFinish}>
+                Not now, keep using DeepSeek Harness
+              </button>
+            )}
           </>
         )}
 
@@ -314,6 +342,28 @@ export function SetupScreen(props: {
             </SecretForm>
             <SecureNote />
             <p className="muted small">Remote Control and plan usage need a Claude subscription, so they’re off with a key only. You can add a subscription later in Settings.</p>
+          </>
+        )}
+
+        {step === 'deepseek' && (
+          <>
+            <StepHead icon="terminal" title="Use DeepSeek Harness" onBack={() => go('choose')} />
+            <p className="muted">
+              Chats run on{' '}
+              <a href="#" onClick={(e) => (e.preventDefault(), void api.openExternal('https://github.com/deepseek-ai/deepseek-harness'))}>
+                DeepSeek Harness
+              </a>
+              , DeepSeek’s open-source coding agent, inside LocalClaude. Create an API key at{' '}
+              <a href="#" onClick={(e) => (e.preventDefault(), void api.openExternal('https://platform.deepseek.com/api_keys'))}>
+                platform.deepseek.com
+              </a>{' '}
+              and paste it here. Usage is billed to your DeepSeek account.
+            </p>
+            <SecretForm placeholder="sk-…" submit="Use DeepSeek" busy={busy} onSubmit={(v) => void saveDeepSeek(v)} autoFocus>
+              {error && <p className="danger-text small setup-error">{error}</p>}
+            </SecretForm>
+            <SecureNote />
+            <DeepSeekInstall />
           </>
         )}
 

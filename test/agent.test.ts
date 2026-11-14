@@ -29,6 +29,8 @@ import { projectDirName, transcriptExists } from '../src/main/transcripts'
 import { mapUsage } from '../src/main/usage'
 import { fitToScreens } from '../src/main/windowState'
 import { resolveStyle } from '../src/shared/styles'
+import { DeepSeekSession, cleanDeepSeekKey, displayTool, dshPermissionMode, toolOutput } from '../src/main/deepseek'
+import { deepseekModelLabel } from '../src/shared/deepseek'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -326,6 +328,7 @@ function memStore() {
     getGlobalMemory: () => s.memory,
     setGlobalMemory: (m: any[]) => (s.memory = m),
     getSettings: (): AppSettings => s.settings,
+    getDeepSeekKey: () => (s as any).deepseekKey as string | undefined,
     getNotePath: (id: string) => s.notes[id],
     setNotePath: (id: string, rel: string | undefined) => (rel ? (s.notes[id] = rel) : delete s.notes[id]),
     saveImage: (sid: string, id: string, data: Buffer) => s.images.set(`${sid}/${id}`, data),
@@ -1038,6 +1041,77 @@ function projectFolders() {
   console.log('✓ project folders: main folder, more folders, every chat in the project gets them, removing and replacing')
 }
 
+/** DeepSeek Harness: dsh's tools shown like Claude Code's, its sandbox modes, the key check, switching a chat's harness, and a real ACP exchange with the scripted dsh. */
+async function deepseekEngine() {
+  assert.deepEqual(displayTool('bash', { command: 'ls', description: 'List' }), { name: 'Bash', input: { command: 'ls', description: 'List' } })
+  assert.equal(displayTool('web_search', { queries: ['a', 'b'] }).input.query, 'a · b')
+  assert.equal(displayTool('skill', { name: 'pdf' }).input.skill, 'pdf')
+  assert.equal(displayTool('some_mcp_tool', {}).name, 'some_mcp_tool', 'unknown tools keep their name')
+  const out = toolOutput([{ type: 'content', content: { type: 'text', text: 'hi' } }, { type: 'diff', path: '/a', oldText: 'x', newText: 'y' }] as any)
+  assert.equal(out.text, 'hi')
+  assert.deepEqual(out.patch?.[0].lines, ['-x', '+y'])
+  assert.equal(dshPermissionMode('plan'), 'read-only')
+  assert.equal(dshPermissionMode('bypassPermissions'), 'danger-full-access')
+  assert.equal(dshPermissionMode('acceptEdits'), 'workspace-write')
+  assert.ok('error' in cleanDeepSeekKey('  '))
+  assert.ok('error' in cleanDeepSeekKey('sk-short'))
+  assert.deepEqual(cleanDeepSeekKey(' "sk-0123456789abcdef0123" '), { key: 'sk-0123456789abcdef0123' })
+  assert.equal(deepseekModelLabel('["deepseek-official","deepseek-v4-pro"]'), 'DeepSeek V4 Pro')
+  assert.equal(deepseekModelLabel('["x","some-model"]'), 'some-model')
+
+  // new chats follow the default harness; designs stay on Claude Code
+  const st: any = memStore()
+  st._s.settings.defaultEngine = 'deepseek'
+  st._s.settings.deepseekModel = '["deepseek-official","deepseek-v4-pro"]'
+  const events: any[] = []
+  const m = new SessionManager(st, (e) => events.push(e), { transcriptExists: () => true })
+  const chat = m.create(process.cwd())
+  assert.equal(chat.engine, 'deepseek')
+  assert.equal(chat.model, '["deepseek-official","deepseek-v4-pro"]')
+  assert.ok((m as any).get(chat.id) instanceof DeepSeekSession)
+  assert.equal(m.create(process.cwd(), undefined, { kind: 'prototype' } as any).engine, undefined, 'designs use Claude Code')
+
+  // a real ACP exchange with the scripted dsh
+  process.env.LOCALCLAUDE_DSH = process.cwd() + '/test/e2e/fake-dsh.mjs'
+  st._s.deepseekKey = 'sk-TEST-ONLY-0123456789abcdef'
+  const waitFor = async (what: string, fn: () => boolean) => {
+    for (let i = 0; i < 100 && !fn(); i++) await new Promise((r) => setTimeout(r, 50))
+    assert.ok(fn(), 'timed out waiting for ' + what)
+  }
+  const text = () => JSON.stringify(m.history(chat.id))
+  m.send({ sessionId: chat.id, text: 'what do you know', attachments: [] })
+  await waitFor('a reply', () => text().includes('DeepSeek facts') && !m.isRunning(chat.id))
+  assert.match(text(), /mode=workspace-write key=yes .*model=deepseek-v4-pro/)
+  assert.ok(st.getSession(chat.id).sdkSessionId?.startsWith('ds-'), 'dsh’s session id is kept for resuming')
+  m.send({ sessionId: chat.id, text: 'run a command', attachments: [] })
+  await waitFor('the tool', () => text().includes('There are two files.') && !m.isRunning(chat.id))
+  const tool = m.history(chat.id).flatMap((x) => x.parts).find((p: any) => p.kind === 'tool') as any
+  assert.equal(tool.name, 'Bash')
+  assert.equal(tool.result, 'alpha.txt\nbeta.txt')
+  assert.ok(tool.done)
+  // a sandbox escape asks first; denying it is passed on
+  m.send({ sessionId: chat.id, text: 'write outside', attachments: [] })
+  await waitFor('the permission', () => events.some((e) => e.type === 'permission'))
+  const req = events.find((e) => e.type === 'permission').request
+  assert.equal(req.toolName, 'Write')
+  assert.match(req.decisionReason, /outside its sandbox/)
+  m.respond(chat.id, req.requestId, { behavior: 'deny' })
+  await waitFor('the refusal', () => text().includes('wasn’t allowed') && !m.isRunning(chat.id))
+
+  // switching harness keeps the chat, and the earlier messages go along once
+  const switched = m.setEngine(chat.id, 'claude')
+  assert.equal(switched.engine, undefined)
+  assert.equal(switched.sdkSessionId, undefined)
+  assert.equal(switched.switchedFrom, 'deepseek')
+  assert.ok(switched.imported)
+  assert.ok(m.history(chat.id).some((x) => x.role === 'system' && /Switched to Claude Code/.test(JSON.stringify(x.parts))))
+  assert.match(importedContext(switched, m.history(chat.id)), /switched to you from DeepSeek Harness/)
+  assert.ok(!(m as any).get(chat.id).buildOptions().resume, 'Claude Code starts a fresh session')
+  m.shutdownAll()
+  delete process.env.LOCALCLAUDE_DSH
+  console.log('✓ DeepSeek Harness: tools, sandbox modes, key check, a real ACP exchange, switching harness both ways')
+}
+
 function yourName() {
   const st: any = memStore()
   st._s.settings.userName = '  Paartha '
@@ -1554,6 +1628,7 @@ await customization()
 await signInChoices()
 // before the rest: a failure further down (e.g. designMode) stops the suite, and this must still run
 await consoleKeyBilling()
+await deepseekEngine()
 await subscriptionToken()
 await checkpointsAndRewind()
 await slashCommandOutput()

@@ -1,4 +1,4 @@
-// End-to-end steps for 1.4: the first-run setup screen (three ways to sign in), picking a look,
+// End-to-end steps for 1.4: the first-run setup screen (four ways to sign in), picking a look,
 // Settings → Appearance and Keyboard, the command palette, and a mod with a script.
 // The app starts signed out (LOCALCLAUDE_FAKE_SIGNED_OUT) with an empty mods folder.
 
@@ -10,11 +10,11 @@ const cssVar = (name) => `getComputedStyle(document.documentElement).getProperty
 
 export const steps = [
   {
-    name: 'setup: signed out, the three ways to sign in',
+    name: 'setup: signed out, the four ways to sign in',
     run: async (c) => {
-      await c.waitFor('the setup screen', "!!__t.q('.setup-card') && __t.qa('.method').length === 3")
+      await c.waitFor('the setup screen', "!!__t.q('.setup-card') && __t.qa('.method').length === 4")
       const titles = await c.page("__t.qa('.method b').map((e) => e.innerText)")
-      for (const t of ['Claude subscription', 'Auth token', 'Console API key'])
+      for (const t of ['Claude subscription', 'Auth token', 'Console API key', 'DeepSeek Harness'])
         if (!titles.some((x) => x.startsWith(t))) throw new Error(`missing "${t}" in ${JSON.stringify(titles)}`)
       if (!(await c.page("__t.q('.method.on')?.dataset.method === 'subscription'"))) throw new Error('the subscription should be picked to start with')
       // the app's shortcuts don't work before you've signed in
@@ -63,7 +63,7 @@ export const steps = [
       await c.openSettings('Account')
       await c.waitFor('the sign-in', "__t.text('.kv').includes('Subscription token (saved in LocalClaude)')")
       await c.page("__t.click(__t.byText('.modal-body .btn.danger', 'Sign out'))")
-      await c.waitFor('the setup screen', "!!__t.q('.setup-card') && __t.qa('.method').length === 3")
+      await c.waitFor('the setup screen', "!!__t.q('.setup-card') && __t.qa('.method').length === 4")
     }
   },
   {
@@ -88,7 +88,7 @@ export const steps = [
     run: async (c) => {
       await c.openSettings('Account')
       await c.page("__t.click(__t.byText('.modal-body .btn.danger', 'Sign out'))")
-      await c.waitFor('the setup screen', "!!__t.q('.setup-card') && __t.qa('.method').length === 3")
+      await c.waitFor('the setup screen', "!!__t.q('.setup-card') && __t.qa('.method').length === 4")
       await c.page("__t.click(__t.q('.setup-continue'))")
       await c.waitFor('the subscription page', "__t.text('.step-head h2').includes('Claude subscription')")
       await c.page("__t.click(__t.byText('.btn', 'Open the browser'))")

@@ -327,3 +327,20 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* DeepSeek Harness: leave setup without a Claude sign-in, and the install card */
+.setup-skip {
+  margin-top: 8px;
+  width: 100%;
+}
+.deepseek-install {
+  margin-top: 10px;
+}
+.deepseek-found {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.deepseek-found svg {
+  color: var(--accent);
+}

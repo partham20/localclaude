@@ -78,6 +78,8 @@ import {
   updateProject
 } from './projects'
 import { SecureStore } from './store'
+import { checkDeepSeekKey, cleanDeepSeekKey, deepseekKeySource, deepseekStatus, installDsh } from './deepseek'
+import type { Engine } from '../shared/types'
 import { createZip } from './zip'
 
 // Artifact previews load from artifact://view/<chat>/<artifact>/<version> in a sandboxed frame;
@@ -217,7 +219,36 @@ function registerIpc(): void {
   handle('log:renderer', (message: string) => log('error', `[window] ${String(message).slice(0, 4000)}`), true)
 
   // ---- auth (your Claude subscription, via Claude Code's own login)
-  handle('auth:status', () => authStatus())
+  handle('auth:status', async () => ({ ...(await authStatus()), deepseekKey: deepseekKeySource(store) }))
+
+  // ---- DeepSeek Harness: its API key (encrypted vault, never sent back), finding and installing dsh
+  const saveDeepSeekKey = async (raw: string): Promise<{ ok: boolean; error?: string; warning?: string }> => {
+    const c = cleanDeepSeekKey(raw)
+    if ('error' in c) return { ok: false, error: c.error }
+    const check = process.env.LOCALCLAUDE_FAKE_AGENT || process.env.LOCALCLAUDE_DSH ? { ok: true as const } : await checkDeepSeekKey(c.key)
+    if (!check.ok) return check
+    store.setDeepSeekKey(c.key)
+    manager.restartAllSoon()
+    log('info', 'DeepSeek API key saved')
+    return { ok: true, warning: 'warning' in check ? check.warning : undefined }
+  }
+  handle('deepseek:status', () => deepseekStatus(store, store.getSettings()))
+  handle('deepseek:saveKey', (raw: string) => saveDeepSeekKey(raw))
+  handle('deepseek:removeKey', () => {
+    store.setDeepSeekKey(undefined)
+    if (store.getSettings().signInMethod === 'deepseek') store.setSettings({ signInMethod: '' })
+    manager.restartAllSoon()
+    log('info', 'DeepSeek API key removed')
+    return { ok: true }
+  })
+  handle('deepseek:install', () => installDsh((e) => win?.webContents.send('deepseek:install', e)))
+  handle('deepseek:models', () => manager.deepseekModels)
+  // The setup screen's DeepSeek choice: no Claude sign-in needed, new chats run on DeepSeek Harness.
+  handle('auth:useDeepSeek', async (raw: string) => {
+    const r = await saveDeepSeekKey(raw)
+    if (r.ok) store.setSettings({ signInMethod: 'deepseek', defaultEngine: 'deepseek' })
+    return r
+  })
   // A Console API key typed into Settings: checked, kept in the encrypted vault, never sent back.
   handle('consoleKey:save', async (raw: string) => {
     const c = cleanConsoleKey(raw)
@@ -291,7 +322,10 @@ function registerIpc(): void {
   handle('auth:logout', async () => {
     manager.shutdownAll()
     const method = store.getSettings().signInMethod
-    if (method === 'apiKey') {
+    if (method === 'deepseek') {
+      store.setDeepSeekKey(undefined)
+      store.setSettings({ defaultEngine: 'claude' })
+    } else if (method === 'apiKey') {
       store.setConsoleKey(undefined)
       setSavedConsoleKey(undefined)
       setApiKeyOnly(false)
@@ -689,6 +723,7 @@ function registerIpc(): void {
   handle('chat:setModel', (id: string, model: string) => manager.setModel(id, model))
   handle('chat:setDirs', (id: string, dirs: string[]) => manager.setDirs(id, dirs))
   handle('models:list', () => manager.models)
+  handle('chat:setEngine', (id: string, engine: Engine) => manager.setEngine(id, engine))
   handle('chat:setStyle', (id: string, style: string) => manager.setStyle(id, style))
   handle('chat:rewindPreview', (id: string, messageId: string) => manager.rewindPreview(id, messageId))
   handle('chat:rewind', (id: string, req: RewindRequest) => manager.rewind(id, req))
@@ -872,6 +907,10 @@ function syncToVault(e: AgentEvent): void {
 
 /** Settings that only change the UI; changing them doesn't restart idle chats. */
 const UI_ONLY_SETTINGS = new Set<keyof AppSettings>([
+  // DeepSeek Harness: new chats' engine and model, and effort, which is applied before each prompt
+  'defaultEngine',
+  'deepseekModel',
+  'deepseekEffort',
   'theme',
   'replyFont',
   'uiFont',

@@ -43,6 +43,7 @@ import { SIDEBAR_WIDTH, Sidebar } from './components/Sidebar'
 import { Icon } from './components/Icon'
 import { Spark } from './components/Spark'
 import { billsConsoleKey } from '../../shared/billing'
+import { engineLabel } from '../../shared/deepseek'
 
 export interface SessionRuntime {
   status: 'idle' | 'running' | 'starting'
@@ -200,8 +201,15 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   /** the look-picking step after signing in on the setup screen */
   const [onboarding, setOnboarding] = useState(false)
+  // signed in to Claude, or set up with DeepSeek Harness only (a DeepSeek key, no Claude sign-in)
+  const ready = !!auth && (auth.loggedIn || (settings?.signInMethod === 'deepseek' && !!auth.deepseekKey))
 
-  const refreshAuth = useCallback(async () => setAuth(await api.authStatus()), [])
+  // how you sign in lives in settings too (signInMethod, defaultEngine), so read both
+  const refreshAuth = useCallback(async () => {
+    const [a, st] = await Promise.all([api.authStatus(), api.getSettings()])
+    setSettings(st)
+    setAuth(a)
+  }, [])
 
   // ---- boot: lock → settings/sessions → auth
   const boot = useCallback(async () => {
@@ -554,7 +562,7 @@ export default function App() {
     }
     for (const cmd of modSnap.commands) if (cmd.shortcut && !byCombo.has(cmd.shortcut)) byCombo.set(cmd.shortcut, cmd.run)
     const onKey = (e: KeyboardEvent): void => {
-      if (!lock?.ok || !auth?.loggedIn || onboarding) return
+      if (!lock?.ok || !ready || onboarding) return
       const fn = byCombo.get(comboFromEvent(e, isMac))
       if (!fn) return
       e.preventDefault()
@@ -562,7 +570,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [bindings, actions, modSnap.commands, lock?.ok, auth?.loggedIn, onboarding])
+  }, [bindings, actions, modSnap.commands, lock?.ok, ready, onboarding])
 
   // ---- what mods can reach
   const activeRef = useRef<SessionMeta | null>(null)
@@ -627,7 +635,36 @@ export default function App() {
       ['account', 'Account & sign-in', 'key'],
       ['usage', 'Usage', 'sliders']
     ]
+    tabs.push(['deepseek', 'DeepSeek Harness', 'terminal'])
     for (const [tab, label, icon] of tabs) items.push({ id: `settings:${tab}`, title: `Settings: ${label}`, run: () => setSettingsOpen(tab), icon, group: 'Settings' })
+    // switch harness: the chat you're in, and what new chats use
+    const current = sessions.find((x) => x.id === activeId)
+    if (current && !current.design) {
+      const to = current.engine === 'deepseek' ? 'claude' : 'deepseek'
+      items.push({
+        id: 'engine:switch',
+        title: `Switch harness: move this chat to ${engineLabel(to)}`,
+        keywords: 'engine deepseek claude dsh model provider',
+        run: () =>
+          void api.setEngine(current.id, to).then(
+            (m) => setSessions((list) => list.map((x) => (x.id === m.id ? m : x))),
+            (e: unknown) => setToast({ text: String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), error: true })
+          ),
+        icon: 'terminal',
+        group: 'Chat'
+      })
+    }
+    if (settings) {
+      const next = settings.defaultEngine === 'deepseek' ? 'claude' : 'deepseek'
+      items.push({
+        id: 'engine:default',
+        title: `Switch harness: new chats use ${engineLabel(next)}`,
+        keywords: 'engine deepseek claude dsh default',
+        run: () => void updateSettings({ defaultEngine: next }),
+        icon: 'terminal',
+        group: 'Settings'
+      })
+    }
     const a = settings ? normalizeAppearance(settings.appearance) : null
     for (const t of allThemes(modSnap.themes))
       items.push({
@@ -644,7 +681,7 @@ export default function App() {
     for (const s of sessions.slice(0, 200)) items.push({ id: `chat:${s.id}`, title: s.title || 'New chat', run: () => openChat(s.id), icon: s.design ? 'penTool' : 'chat', group: 'Chat' })
     for (const p of projects) items.push({ id: `project:${p.id}`, title: p.name, run: () => setPage({ kind: 'project', id: p.id }), icon: 'project', group: 'Project' })
     return items
-  }, [paletteOpen, actions, bindings, settings, modSnap.themes, modSnap.commands, sessions, projects, openChat, updateSettings])
+  }, [paletteOpen, actions, bindings, settings, modSnap.themes, modSnap.commands, sessions, projects, openChat, updateSettings, activeId])
 
   if (!lock) return <div className="splash">Opening…</div>
   if (!lock.ok)
@@ -667,11 +704,12 @@ export default function App() {
         <span>Checking your Claude sign-in…</span>
       </div>
     )
-  if (!auth.loggedIn || onboarding)
+  if (!ready || onboarding)
     return (
       <SetupScreen
         auth={auth}
         settings={settings}
+        canSkip={ready}
         onAuthChanged={async () => {
           setOnboarding(true)
           await refreshAuth()
@@ -909,6 +947,10 @@ export default function App() {
           onChange={updateSettings}
           onClose={() => setSettingsOpen(false)}
           onLogout={signOut}
+          onSignInClaude={() => {
+            setSettingsOpen(false)
+            setOnboarding(true)
+          }}
           onAuthChanged={async () => {
             forgetIdleKeySources()
             await refreshAuth()
