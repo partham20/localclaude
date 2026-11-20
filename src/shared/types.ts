@@ -70,8 +70,8 @@ export interface AppSettings {
   /** mods switched on, by id (Settings → Mods) */
   mods: Record<string, boolean>
   /** how you chose to sign in on the setup screen ('' = Claude Code's own sign-in, as before) */
-  signInMethod: '' | 'subscription' | 'token' | 'apiKey' | 'deepseek'
-  /** the harness new chats run on: Claude Code, or DeepSeek Harness (dsh). Each chat can switch. */
+  signInMethod: '' | 'subscription' | 'token' | 'apiKey' | 'deepseek' | 'opencode'
+  /** the harness new chats run on: Claude Code, DeepSeek Harness (dsh) or OpenCode. Each chat can switch. */
   defaultEngine: Engine
   /** DeepSeek Harness: model for new chats ('' = its default), as dsh names it, e.g. ["deepseek-official","deepseek-v4-pro"] */
   deepseekModel: string
@@ -79,6 +79,10 @@ export interface AppSettings {
   deepseekEffort: '' | 'off' | 'low' | 'high' | 'max'
   /** how to start dsh: '' finds it (installed by LocalClaude, npm global, or dsh on PATH); else a command or a path to its lib/bin.js */
   deepseekCommand: string
+  /** OpenCode: model for new chats ('' = its default), as OpenCode names it: provider/model, e.g. openai/gpt-5.5 */
+  opencodeModel: string
+  /** how to start OpenCode: '' finds it (downloaded by LocalClaude, ~/.opencode/bin, or opencode on PATH); else the path to an opencode binary */
+  opencodeCommand: string
   /** desktop notification when Claude finishes or needs you while LocalClaude isn't focused */
   notifications: boolean
   /** name new chats with a short AI-written title after the first reply (one small Haiku request) */
@@ -126,7 +130,7 @@ export interface AppSettings {
 }
 
 /** The agent harness a chat runs on. */
-export type Engine = 'claude' | 'deepseek'
+export type Engine = 'claude' | 'deepseek' | 'opencode'
 
 export interface SessionMeta {
   id: string // SDK session id (UUID) once known, else a local temp id
@@ -339,6 +343,8 @@ export interface AuthStatus {
   apiKeyOnly?: boolean
   /** a DeepSeek API key is saved in LocalClaude, or DEEPSEEK_API_KEY is set. Never the key itself. */
   deepseekKey?: 'saved' | 'env'
+  /** OpenCode is set up as the way in (the setup screen's OpenCode choice): it can be used without a Claude sign-in */
+  opencodeReady?: boolean
   email?: string
   subscriptionType?: string
   error?: string
@@ -416,6 +422,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   deepseekModel: '',
   deepseekEffort: '',
   deepseekCommand: '',
+  opencodeModel: '',
+  opencodeCommand: '',
   appearance: DEFAULT_APPEARANCE,
   keybindings: {},
   mods: {},

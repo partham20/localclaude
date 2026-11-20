@@ -3,6 +3,7 @@
 // the ZIP lets you import it back into LocalClaude, on this machine or another one.
 import { ARTIFACT_LABEL, artifactExt, artifactLang, estimateTokens, fenced, safeFileName } from '../shared/format'
 import { editDiff, isArtifactTool, parsedInput, plural, short, stepText, summarize, type Step, type ToolPart } from '../shared/steps'
+import { engineLabel } from '../shared/deepseek'
 import type { Artifact, ChatMessage, Engine, ExportOptions, ImageRef, ImportResult, MemoryItem, Project, ProjectContextUsage, SessionMeta } from '../shared/types'
 import { renderArtifactPage } from './artifacts'
 import { IMAGE_EXT, referencedImages } from './images'
@@ -237,11 +238,11 @@ export function importedContext(meta: SessionMeta, history: ChatMessage[], engin
   let md = chatMarkdown(meta, history, { tools: 'summary', thinking: false, artifacts: 'none', knowledge: false, backup: false })
   if (md.length > LIMIT) md = '… (earlier messages omitted)\n\n' + md.slice(-LIMIT)
   const why = meta.switchedFrom
-    ? `This chat was switched to you from ${meta.switchedFrom === 'deepseek' ? 'DeepSeek Harness' : 'Claude Code'}`
+    ? `This chat was switched to you from ${engineLabel(meta.switchedFrom)}`
     : 'This chat was restored from a LocalClaude export'
   return (
     `${why}, so its earlier messages aren't in your context. Here they are for reference; continue the conversation from there.` +
-    (engine === 'deepseek' && meta.switchedFrom ? ' Tool calls in it were made by the other harness.' : '') +
+    (engine !== 'claude' && meta.switchedFrom ? ' Tool calls in it were made by the other harness.' : '') +
     `\n<previous_conversation>\n${md}\n</previous_conversation>`
   )
 }

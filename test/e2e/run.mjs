@@ -10,8 +10,11 @@ import { pathToFileURL } from 'node:url'
 
 // Two suites: the app as you use it (signed in), and 1.4's setup screen, themes and mods (signed out, LOCALCLAUDE_E2E_SUITE=setup).
 // A third (LOCALCLAUDE_E2E_SUITE=deepseek): DeepSeek Harness as the engine, with a scripted dsh, starting signed out.
-const SUITE = ['setup', 'deepseek'].includes(process.env.LOCALCLAUDE_E2E_SUITE) ? process.env.LOCALCLAUDE_E2E_SUITE : 'main'
-const { steps } = await import(SUITE === 'setup' ? './setup-steps.mjs' : SUITE === 'deepseek' ? './deepseek-steps.mjs' : './steps.mjs')
+// A fourth (LOCALCLAUDE_E2E_SUITE=opencode): OpenCode as the engine, with a scripted OpenCode, starting signed out.
+const SUITE = ['setup', 'deepseek', 'opencode'].includes(process.env.LOCALCLAUDE_E2E_SUITE) ? process.env.LOCALCLAUDE_E2E_SUITE : 'main'
+const { steps } = await import(
+  SUITE === 'setup' ? './setup-steps.mjs' : SUITE === 'deepseek' ? './deepseek-steps.mjs' : SUITE === 'opencode' ? './opencode-steps.mjs' : './steps.mjs'
+)
 
 const work = mkdtempSync(join(tmpdir(), 'lc-e2e-'))
 process.env.LOCALCLAUDE_USER_DATA = join(work, 'profile')
@@ -28,6 +31,9 @@ if (SUITE !== 'main') process.env.LOCALCLAUDE_FAKE_SIGNED_OUT = '1'
 // DeepSeek Harness: a scripted dsh instead of the real one, and never your own key
 process.env.LOCALCLAUDE_DSH = resolve('test/e2e/fake-dsh.mjs')
 delete process.env.DEEPSEEK_API_KEY
+// OpenCode: a scripted one, and none of your provider keys
+process.env.LOCALCLAUDE_OPENCODE = resolve('test/e2e/fake-opencode.mjs')
+for (const k of ['OPENAI_API_KEY', 'OPENCODE_CONFIG_CONTENT']) delete process.env[k]
 
 // File dialogs take their answers from this queue, in order.
 const answers = []

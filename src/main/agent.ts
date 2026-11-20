@@ -48,6 +48,8 @@ import { log } from './log'
 import { MEMORY_TOOLS, createMemoryServer, memoryPrompt } from './memory'
 import type { SecureStore } from './store'
 import { DeepSeekSession } from './deepseek'
+import { OpenCodeSession } from './opencode'
+import { engineLabel } from '../shared/deepseek'
 
 /** forkAt value for a chat's first message: rewinding there starts a fresh transcript. */
 const FORK_START = 'start'
@@ -1025,7 +1027,7 @@ function friendlyError(text: string): string {
 }
 
 export class SessionManager {
-  private sessions = new Map<string, AgentSession | DeepSeekSession>()
+  private sessions = new Map<string, AgentSession | DeepSeekSession | OpenCodeSession>()
   private reportedModels: ModelOption[] = []
   /** Claude Code's model menu: from this run, else the one remembered from an earlier run */
   get models(): ModelOption[] {
@@ -1038,6 +1040,8 @@ export class SessionManager {
   }
   /** DeepSeek Harness's models, as the last dsh session listed them */
   deepseekModels: { value: string; displayName: string; description: string }[] = []
+  /** OpenCode's models (from the providers you've connected), as the last OpenCode session listed them */
+  opencodeModels: { value: string; displayName: string; description: string }[] = []
   private deps: SessionDeps
   /** full-text search over every chat */
   readonly index: ChatIndex
@@ -1055,7 +1059,7 @@ export class SessionManager {
     return this.index.search(query, { limit: 40 })
   }
 
-  private get(id: string): AgentSession | DeepSeekSession {
+  private get(id: string): AgentSession | DeepSeekSession | OpenCodeSession {
     let s = this.sessions.get(id)
     if (!s) {
       const meta = this.store.getSession(id)
@@ -1067,6 +1071,14 @@ export class SessionManager {
         })
         this.sessions.set(id, ds)
         return ds
+      }
+      if (meta.engine === 'opencode') {
+        const oc = new OpenCodeSession(meta, this.store, this.emit, () => this.store.getSettings(), {
+          titleFor: this.deps.titleFor,
+          onModels: (m) => (this.opencodeModels = m)
+        })
+        this.sessions.set(id, oc)
+        return oc
       }
       s = new AgentSession(
         meta,
@@ -1113,14 +1125,14 @@ export class SessionManager {
       resumeAt: undefined,
       imported: started || undefined,
       switchedFrom: started ? from : undefined,
-      model: engine === 'deepseek' ? st.deepseekModel : st.defaultModel,
+      model: engine === 'deepseek' ? st.deepseekModel : engine === 'opencode' ? st.opencodeModel : st.defaultModel,
       updatedAt: Date.now()
     }
     this.store.upsertSession(meta)
     const next = this.get(id)
     if (started) {
       this.emit({ type: 'history-reset', sessionId: id, history: next.history })
-      const label = engine === 'deepseek' ? 'DeepSeek Harness' : 'Claude Code'
+      const label = engineLabel(engine)
       const msg: ChatMessage = { id: 'sys-' + randomUUID(), role: 'system', parts: [{ kind: 'text', text: `Switched to ${label}. Your earlier messages go along as context with your next message.` }], ts: Date.now() }
       next.history = [...next.history, msg]
       this.store.saveHistory(id, next.history)
@@ -1150,8 +1162,8 @@ export class SessionManager {
       projectId: project?.id,
       cwd: cwd || project?.cwd || st.defaultCwd,
       additionalDirs: [],
-      engine: !design && st.defaultEngine === 'deepseek' ? 'deepseek' : undefined,
-      model: !design && st.defaultEngine === 'deepseek' ? st.deepseekModel : st.defaultModel,
+      engine: !design && st.defaultEngine !== 'claude' ? st.defaultEngine : undefined,
+      model: design || st.defaultEngine === 'claude' ? st.defaultModel : st.defaultEngine === 'deepseek' ? st.deepseekModel : st.opencodeModel,
       permissionMode: st.defaultPermissionMode,
       titleSource: 'auto',
       createdAt: Date.now(),

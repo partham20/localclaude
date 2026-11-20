@@ -64,7 +64,7 @@ export function ConnectorsPanel({ settings, onChange }: { settings: AppSettings;
     <div className="connectors-panel">
       <h2>Connectors</h2>
       <p className="muted small">
-        Connectors (MCP servers) give Claude tools and data from other apps. They work in Claude Code and DeepSeek chats alike, except remote (SSE) ones, which DeepSeek Harness doesn’t take.
+        Connectors (MCP servers) give Claude tools and data from other apps. They work in Claude Code, DeepSeek and OpenCode chats alike, except remote (SSE) ones, which DeepSeek Harness and OpenCode don’t take.
       </p>
       {note && <div className={'small connectors-note ' + (note.error ? 'danger-text' : 'ok-text')}>{note.text}</div>}
 
@@ -140,7 +140,7 @@ export function ConnectorsPanel({ settings, onChange }: { settings: AppSettings;
         <div className="field">
           <label>In Claude Code</label>
           <p className="muted small">
-            Servers in Claude Code’s own settings. Claude Code chats already load them when “user settings” is on; copy one here so DeepSeek chats get it too, and so you can switch it off or
+            Servers in Claude Code’s own settings. Claude Code chats already load them when “user settings” is on; copy one here so DeepSeek and OpenCode chats get it too, and so you can switch it off or
             test it.
           </p>
           <div className="mcp-list">

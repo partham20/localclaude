@@ -1,5 +1,5 @@
 // First run: choose how to sign in (Claude subscription, a subscription token, a Console API key, or
-// DeepSeek Harness with a DeepSeek key), then pick a look. Secrets go straight to the main process and are kept in the encrypted vault.
+// DeepSeek Harness with a DeepSeek key, or OpenCode), then pick a look. Secrets go straight to the main process and are kept in the encrypted vault.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ACCENT_SWATCHES, BUILTIN_THEMES, normalizeAppearance, type Appearance } from '../../../shared/customize'
 import type { AppSettings, AuthStatus } from '../../../shared/types'
@@ -7,8 +7,9 @@ import { api } from '../api'
 import { Icon } from './Icon'
 import { Spark } from './Spark'
 import { DeepSeekInstall } from './DeepSeekSettings'
+import { OpenCodeDownload } from './OpenCodeSettings'
 
-type Method = 'subscription' | 'token' | 'apiKey' | 'deepseek'
+type Method = 'subscription' | 'token' | 'apiKey' | 'deepseek' | 'opencode'
 type Step = 'choose' | Method | 'personalize'
 
 const METHODS: { id: Method; icon: string; title: string; body: string; badge?: string }[] = [
@@ -36,6 +37,12 @@ const METHODS: { id: Method; icon: string; title: string; body: string; badge?: 
     icon: 'terminal',
     title: 'DeepSeek Harness',
     body: 'Chat with DeepSeek models through the open-source dsh agent, using your DeepSeek API key. You can add Claude later and switch per chat.'
+  },
+  {
+    id: 'opencode',
+    icon: 'terminal',
+    title: 'OpenCode',
+    body: 'The open-source coding agent with 75+ providers (OpenAI, Gemini, OpenRouter, local models…) and free models that need no account. You can add Claude later and switch per chat.'
   }
 ]
 
@@ -182,6 +189,19 @@ export function SetupScreen(props: {
     }
   }
 
+  const useOpenCode = async (): Promise<void> => {
+    setBusy(true)
+    setError(null)
+    try {
+      const r = await api.useOpenCode()
+      if (!r.ok) return setError(r.error ?? 'OpenCode isn’t ready yet.')
+      await props.onAuthChanged()
+      setStep('personalize')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const a = normalizeAppearance(props.settings.appearance)
   const setLook = (patch: Partial<Appearance>): void => void props.onChange({ appearance: { ...a, ...patch } })
 
@@ -233,7 +253,7 @@ export function SetupScreen(props: {
             </button>
             {props.canSkip && (
               <button className="btn ghost setup-skip" onClick={props.onFinish}>
-                Not now, keep using DeepSeek Harness
+                Not now, keep using {props.settings.signInMethod === 'opencode' ? 'OpenCode' : 'DeepSeek Harness'}
               </button>
             )}
           </>
@@ -364,6 +384,25 @@ export function SetupScreen(props: {
             </SecretForm>
             <SecureNote />
             <DeepSeekInstall />
+          </>
+        )}
+
+        {step === 'opencode' && (
+          <>
+            <StepHead icon="terminal" title="Use OpenCode" onBack={() => go('choose')} />
+            <p className="muted">
+              Chats run on{' '}
+              <a href="#" onClick={(e) => (e.preventDefault(), void api.openExternal('https://github.com/anomalyco/opencode'))}>
+                OpenCode
+              </a>
+              , the open-source coding agent, inside LocalClaude. It starts with OpenCode Zen’s free models; add keys for OpenAI, Gemini, OpenRouter and others
+              in Settings → OpenCode whenever you like. Usage is billed by each provider, never your Claude plan.
+            </p>
+            <OpenCodeDownload onChanged={(ok) => ok && void props.onAuthChanged()} />
+            {error && <p className="danger-text small setup-error">{error}</p>}
+            <button className="btn primary big setup-continue opencode-use" disabled={busy || !props.auth.opencodeReady} onClick={() => void useOpenCode()}>
+              Use OpenCode <Icon name="forward" size={16} />
+            </button>
           </>
         )}
 

@@ -7,7 +7,8 @@ export const DSH_PACKAGE = '@deepseek-ai/dsh'
 
 export const ENGINES: { value: Engine; label: string; short: string; hint: string }[] = [
   { value: 'claude', label: 'Claude Code', short: 'Claude', hint: 'Claude models, with your subscription or Console key' },
-  { value: 'deepseek', label: 'DeepSeek Harness', short: 'DeepSeek', hint: 'DeepSeek models through dsh, billed to your DeepSeek API key' }
+  { value: 'deepseek', label: 'DeepSeek Harness', short: 'DeepSeek', hint: 'DeepSeek models through dsh, billed to your DeepSeek API key' },
+  { value: 'opencode', label: 'OpenCode', short: 'OpenCode', hint: '75+ providers, local models and free models, through OpenCode' }
 ]
 
 export const engineLabel = (e: Engine | undefined): string => ENGINES.find((x) => x.value === (e ?? 'claude'))!.label

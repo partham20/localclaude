@@ -259,7 +259,7 @@ export function McpManager({
     <div className="field mcp-manager">
       <label>Your connectors (MCP servers)</label>
       <p className="muted small">
-        LocalClaude’s own list: Claude Code and DeepSeek chats both use these. Servers in your <code>~/.claude.json</code> also load in Claude Code chats when “user settings” is on.
+        LocalClaude’s own list: Claude Code, DeepSeek and OpenCode chats all use these. Servers in your <code>~/.claude.json</code> also load in Claude Code chats when “user settings” is on.
       </p>
       {json ? (
         <JsonEditor settings={settings} onChange={onChange} />

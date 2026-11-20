@@ -7,7 +7,9 @@ import { api } from '../api'
 import { allStyles } from '../../../shared/styles'
 import { designKind } from '../../../shared/design'
 import { claudeModelMenu } from '../../../shared/models'
-import { DEEPSEEK_EFFORTS, DEEPSEEK_MODELS, ENGINES, deepseekModelLabel } from '../../../shared/deepseek'
+import { DEEPSEEK_EFFORTS, DEEPSEEK_MODELS, ENGINES, deepseekModelLabel, engineLabel } from '../../../shared/deepseek'
+import { OPENCODE_MODELS, opencodeModelLabel, opencodeProvider } from '../../../shared/opencode'
+import type { Engine } from '../../../shared/types'
 import { ArtifactPanel, type PanelState } from './ArtifactPanel'
 import { ChoiceDialog } from './ChoiceDialog'
 import { DesignCanvas, type PendingFrame } from './DesignCanvas'
@@ -230,13 +232,18 @@ export function ChatView(props: {
   }, [refreshGit])
 
   const deepseek = meta.engine === 'deepseek'
+  const opencode = meta.engine === 'opencode'
   const [dsModels, setDsModels] = useState(DEEPSEEK_MODELS)
+  const [ocModels, setOcModels] = useState(OPENCODE_MODELS)
   useEffect(() => {
     void api.listModels().then((m) => {
       setModels(claudeModelMenu(m))
     })
     void api.deepseekModels().then((m) => {
       if (m.length) setDsModels([DEEPSEEK_MODELS[0], ...m])
+    })
+    void api.opencodeModels().then((m) => {
+      if (m.length) setOcModels([OPENCODE_MODELS[0], ...m.map((x) => ({ ...x, displayName: x.displayName.replace(/^[^/]*\//, '') }))])
     })
   }, [runtime.init])
 
@@ -405,12 +412,16 @@ export function ChatView(props: {
   const rl = props.rateLimit
   const modelLabel = deepseek
     ? deepseekModelLabel(meta.model || runtime.init?.model || '', dsModels)
-    : meta.model
+    : opencode
+      ? opencodeModelLabel(meta.model || runtime.init?.model || '', ocModels)
+      : meta.model
       ? (models.find((m) => m.value === meta.model)?.displayName ?? prettyModel(meta.model))
       : prettyModel(runtime.init?.model)
   const effortLabel = deepseek
     ? DEEPSEEK_EFFORTS.find((e) => e.value === props.settings.deepseekEffort && e.value)?.label
-    : EFFORTS.find((e) => e.value === props.settings.effort && e.value)?.label
+    : opencode
+      ? undefined
+      : EFFORTS.find((e) => e.value === props.settings.effort && e.value)?.label
 
   const designMenu: MenuEntry[] = [
     { key: 'rename', label: 'Rename', onSelect: () => setRenaming(meta.title) },
@@ -467,7 +478,7 @@ export function ChatView(props: {
   ]
 
   // the harness this chat runs on: switchable any time it isn't busy (earlier messages go along as context)
-  const switchEngine = (engine: 'claude' | 'deepseek'): void =>
+  const switchEngine = (engine: Engine): void =>
     void api.setEngine(meta.id, engine).then(props.onMeta, (e: unknown) => alert(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e)))
   const engineEntries: MenuEntry[] = design
     ? []
@@ -483,7 +494,27 @@ export function ChatView(props: {
         })),
         'divider'
       ]
-  const modelMenu: MenuEntry[] = deepseek
+  // OpenCode lists every model of every provider you've connected: grouped by provider, free ones first
+  const ocEntries = (): MenuEntry[] => {
+    const current = meta.model || runtime.init?.model || ''
+    const out: MenuEntry[] = [{ key: 'm:', label: 'Default', hint: 'OpenCode’s default model', checked: !meta.model, onSelect: () => void api.setModel(meta.id, '') }]
+    const groups = new Map<string, typeof ocModels>()
+    for (const m of ocModels.slice(1)) {
+      const p = opencodeProvider(m.value) || 'other'
+      groups.set(p, [...(groups.get(p) ?? []), m])
+    }
+    const order = [...groups.keys()].sort((a, b) => (a === 'opencode' ? -1 : b === 'opencode' ? 1 : a.localeCompare(b)))
+    for (const p of order) {
+      out.push({ section: p === 'opencode' ? 'OpenCode Zen' : p })
+      for (const m of groups.get(p)!)
+        out.push({ key: 'm:' + m.value, label: m.displayName, hint: m.description || undefined, checked: !!meta.model && current === m.value, onSelect: () => void api.setModel(meta.id, m.value) })
+    }
+    if (ocModels.length <= 1) out.push({ section: 'Send a message to see the models of the providers you’ve connected (Settings → OpenCode)' })
+    return out
+  }
+  const modelMenu: MenuEntry[] = opencode
+    ? [...engineEntries, { section: 'Model' }, ...ocEntries()]
+    : deepseek
     ? [
         ...engineEntries,
         { section: 'Model' },
@@ -898,7 +929,9 @@ export function ChatView(props: {
               {runtime.init && <McpButton sessionId={meta.id} servers={runtime.mcp} onOpenSettings={() => props.onOpenSettings('connectors')} />}
               <SessionBillingTag apiKeySource={runtime.init?.apiKeySource} expectKey={props.consoleKey} />
               <div className="grow" />
-              <span className="disclaimer">{escHint ? 'Press Esc again to rewind' : deepseek ? 'DeepSeek is AI and can make mistakes.' : 'Claude is AI and can make mistakes.'}</span>
+              <span className="disclaimer">
+                {escHint ? 'Press Esc again to rewind' : deepseek ? 'DeepSeek is AI and can make mistakes.' : opencode ? 'AI can make mistakes.' : 'Claude is AI and can make mistakes.'}
+              </span>
               <div className="grow" />
               <ContextRing usage={runtime.context} />
               <Menu
@@ -906,9 +939,14 @@ export function ChatView(props: {
                 align="right"
                 direction="up"
                 title={design ? 'Model and effort' : 'Harness, model and effort'}
+                searchOver={opencode ? 25 : undefined}
                 trigger={
                   <>
-                    {deepseek && <span className="engine-tag" title="This chat runs on DeepSeek Harness">DeepSeek</span>}
+                    {(deepseek || opencode) && (
+                      <span className="engine-tag" title={`This chat runs on ${engineLabel(meta.engine)}`}>
+                        {deepseek ? 'DeepSeek' : 'OpenCode'}
+                      </span>
+                    )}
                     <span className="model-name">{modelLabel}</span>
                     {effortLabel && <span className="muted">{effortLabel}</span>}
                   </>
