@@ -6,7 +6,12 @@
 const KEY = 'sk-TEST-ONLY-openai-key-not-real-0123456789'
 const modelMenu = "__t.click(__t.q('.composer-below .below-menu[title*=\"model\"] .menu-trigger') ?? __t.qa('.composer-below .below-menu .menu-trigger').find((t) => t.querySelector('.model-name')))"
 const lastTurn = "__t.qa('.turn').at(-1).innerText"
-const expectIn = async (c, wants) => {
+// Ask "what do you know" and check OpenCode's answer. Earlier turns hold the same kind of reply,
+// so wait for a new turn and for that turn itself to finish.
+const facts = async (c, wants) => {
+  const before = await c.page("__t.qa('.turn').length")
+  await c.send('what do you know')
+  await c.waitFor('the newest reply', `__t.qa('.turn').length > ${before} && ${lastTurn}.includes('OpenCode facts:') && !__t.q('.send.stop')`, 15000)
   const text = await c.page(lastTurn)
   for (const want of wants) if (!text.includes(want)) throw new Error(`expected ${want} in ${JSON.stringify(text)}`)
 }
@@ -35,8 +40,7 @@ export const steps = [
       await c.page("__t.click(__t.q('.side-new'))")
       await c.waitFor('the OpenCode tag', "__t.text('.engine-tag') === 'OpenCode'")
       await c.send('hello there', 'OpenCode says: hello there')
-      await c.send('what do you know', 'OpenCode facts:')
-      await expectIn(c, ['model=opencode/big-pickle', 'mode=build', 'rules=shell:ask,webfetch:ask,external_directory:ask,edit:ask', 'update=disable', 'autoupdate=off', 'openai=no'])
+      await facts(c, ['model=opencode/big-pickle', 'mode=build', 'rules=shell:ask,webfetch:ask,external_directory:ask,edit:ask', 'update=disable', 'autoupdate=off', 'openai=no'])
     }
   },
   {
@@ -75,16 +79,14 @@ export const steps = [
       await c.shot('opencode-settings')
       await c.closeModal()
       // the idle chat restarts with the key: its model list now has OpenAI's
-      await c.send('what do you know', 'OpenCode facts:')
-      await expectIn(c, ['openai=yes'])
+      await facts(c, ['openai=yes'])
       await c.page(modelMenu)
       await c.waitFor('grouped models', "!!__t.byText('.menu-section', 'openai') && !!__t.byText('.menu-item', 'GPT-5.5') && !!__t.byText('.menu-item', 'Big Pickle')")
       await c.waitFor('the harnesses', "!!__t.byText('.menu-item', 'OpenCode') && !!__t.byText('.menu-item', 'DeepSeek Harness') && !!__t.byText('.menu-item', 'Claude Code')")
       await c.shot('opencode-model-menu')
       await c.menuItem('GPT-5.5')
       await c.waitFor('model shown', "__t.text('.composer-below .model-name') === 'GPT-5.5'")
-      await c.send('what do you know', 'OpenCode facts:')
-      await expectIn(c, ['model=openai/gpt-5.5'])
+      await facts(c, ['model=openai/gpt-5.5'])
     }
   },
   {
@@ -94,8 +96,7 @@ export const steps = [
       await c.menuItem('Plan mode')
       await c.waitFor('plan picked', "!!__t.q('.below-menu.mode-plan')")
       await c.sleep(300)
-      await c.send('what do you know', 'OpenCode facts:')
-      await expectIn(c, ['mode=plan'])
+      await facts(c, ['mode=plan'])
     }
   },
   {
