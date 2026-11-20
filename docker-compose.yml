@@ -1,0 +1,37 @@
+# LocalClaude, self-hosted: the app plus a Cloudflare Tunnel that publishes it at your domain.
+# No ports are opened on this machine; only the tunnel can reach the app. See docs/self-hosting.md.
+services:
+  localclaude:
+    build: .
+    image: localclaude:latest
+    restart: unless-stopped
+    # your user on this machine, so files Claude writes in ./workspace are yours
+    user: "${LC_UID:-1000}:${LC_GID:-1000}"
+    environment:
+      LOCALCLAUDE_SECRET: ${LOCALCLAUDE_SECRET:?Set LOCALCLAUDE_SECRET in .env}
+      # the visitor's address comes from Cloudflare (for sign-in lockouts)
+      LOCALCLAUDE_TRUST_PROXY: "1"
+    volumes:
+      - ./data:/data
+      - ./workspace:/workspace
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    shm_size: 256m
+    networks:
+      - localclaude
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      - localclaude
+    networks:
+      - localclaude
+
+networks:
+  localclaude:

@@ -213,7 +213,7 @@ class AgentSession {
       }
     }
     // A fresh in-process server per query: an MCP server instance serves one connection.
-    if (s.computerUse && !design) mcpServers['computer-use'] = createComputerServer()
+    if (s.computerUse && !design && !process.env.LOCALCLAUDE_SERVER) mcpServers['computer-use'] = createComputerServer()
     const project = this.meta.projectId ? this.store.getProject(this.meta.projectId) : undefined
     // a design is an artifact, so designs have the tool even when artifacts are off for chats
     const artifacts = s.artifacts || design

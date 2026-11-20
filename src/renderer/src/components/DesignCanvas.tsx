@@ -7,7 +7,7 @@ import { artifactLang, fenced } from '../../../shared/format'
 import { streamingFields, type StreamingField } from '../../../shared/partialJson'
 import type { ToolPart } from '../../../shared/steps'
 import type { Artifact, DesignInfo, DesignKind } from '../../../shared/types'
-import { api } from '../api'
+import { api, appUrl } from '../api'
 import { buildDesignClip, writeClip, type DesignClip } from '../designClipboard'
 import { PreviewError, type PanelState } from './ArtifactPanel'
 import { Icon } from './Icon'
@@ -153,7 +153,7 @@ function DraftFrame({ html, width, height, scale = 1 }: { html: string; width: n
     <iframe
       ref={frame}
       className="design-draft"
-      src="artifact://draft/"
+      src={appUrl('artifact://draft/')}
       title="The design as Claude writes it"
       sandbox="allow-scripts"
       style={{ width, height, transform: scale === 1 ? undefined : `scale(${scale})` }}
@@ -267,7 +267,7 @@ export function DesignCanvas(props: {
   const versionOf = (a: Artifact): number => (a.id === props.state.id && props.state.version != null ? Math.min(props.state.version, a.versions.length - 1) : a.versions.length - 1)
   const srcOf = (a: Artifact): string => {
     const vi = versionOf(a)
-    return `artifact://view/${encodeURIComponent(sid)}/${encodeURIComponent(a.id)}/${vi}?t=${a.versions[vi].ts}&design=1`
+    return appUrl(`artifact://view/${encodeURIComponent(sid)}/${encodeURIComponent(a.id)}/${vi}?t=${a.versions[vi].ts}&design=1`)
   }
   const selected = props.artifacts.find((a) => a.id === props.state.id)
   const focus = focusKey ? list.find((f) => f.key === focusKey && f.artifact) : undefined

@@ -672,10 +672,9 @@ export function ChatView(props: {
           onDrop={(e) => {
             e.preventDefault()
             setDragOver(false)
-            const paths = Array.from(e.dataTransfer.files)
-              .map((f) => api.pathForFile(f))
-              .filter(Boolean)
-            if (paths.length) void addPaths(paths)
+            void api.filePaths(Array.from(e.dataTransfer.files)).then((paths) => {
+              if (paths.length) void addPaths(paths)
+            })
           }}
         >
           {find && (

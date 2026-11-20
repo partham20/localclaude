@@ -6,6 +6,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { hostname } from 'node:os'
 
 export function readMachineId(): string {
+  // server mode: derived from the server secret, so the data opens in any container that has it
+  if (process.env.LOCALCLAUDE_MACHINE_ID) return process.env.LOCALCLAUDE_MACHINE_ID
   if (process.platform === 'win32') {
     const out = execFileSync('reg', ['query', 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid'], {
       encoding: 'utf8',

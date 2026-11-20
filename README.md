@@ -140,6 +140,18 @@ Notes:
 
 To build them yourself (on the OS you're targeting): `npm run dist:portable:win` or `npm run dist:portable:linux`. They land in `release/`.
 
+## Self-host it (use it from any browser)
+
+Server mode runs LocalClaude on a machine you own, such as an always-on Linux box, and serves it to a browser
+over HTTPS. You can then chat from a guest PC without signing in to Claude there. It has its own sign-in
+(password plus an authenticator code), runs in Docker, and is published through a Cloudflare Tunnel, so no
+ports are opened. Setup takes about ten minutes: see **[docs/self-hosting.md](docs/self-hosting.md)**.
+
+```sh
+cp .env.example .env   # add LOCALCLAUDE_SECRET and your tunnel token
+docker compose up -d --build
+```
+
 ## Build an installer
 
 Build on the OS you're targeting:
@@ -255,6 +267,7 @@ OpenCode is © 2025 opencode and released under the MIT License. LocalClaude dow
 ```bash
 npm test           # unit tests (LOCALCLAUDE_E2E=1 also sends one real message through Claude Code)
 npm run test:e2e   # builds the app and clicks through it with a scripted Claude
+npm run test:web   # server mode in a real browser (needs Playwright): setup with 2FA, chat, uploads, lockout
 ```
 
 `test:e2e` runs three suites: the app signed in; the setup screen, Appearance, Keyboard, the command palette and the example mod (signed out, `node test/e2e/launch.mjs --setup` runs just that one); and DeepSeek Harness with a scripted dsh that speaks ACP (`--deepseek`).
@@ -287,7 +300,10 @@ src/main/exporter.ts    Markdown/ZIP exports and import
 src/main/git.ts         branch, changes and worktrees
 src/main/mcpCheck.ts    testing MCP servers from Settings
 src/main/fakeAgent.ts   the scripted Claude used by the end-to-end tests (test/e2e/fake-dsh.mjs is the scripted dsh)
+src/main/server/        server mode: HTTP + server-sent events, sign-in with 2FA, desktop stand-ins
 src/preload/            safe bridge (contextIsolation + sandbox)
+src/shared/api.ts       the renderer's API, over IPC (desktop) or HTTP (browser version)
+src/renderer/src/web/   the browser version's client: calls, events, folder/file pickers
 src/shared/             types + the chat reducer used by both processes
 src/shared/customize.ts themes, colors, keyboard shortcuts, mod manifests
 src/renderer/src/mods/  runs mods in the window and gives their scripts the API

@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { DESIGN_KINDS, designKind } from '../../../shared/design'
 import type { AppSettings, Attachment, DesignInfo, DesignKind, PermissionModeUI, ProjectArtifactRef, SessionMeta } from '../../../shared/types'
-import { api } from '../api'
+import { api, appUrl } from '../api'
 import { FRAMED } from './ArtifactPanel'
 import { claudeModelMenu } from '../../../shared/models'
 import { EFFORTS, MODES, fileToAttachment, prettyModel } from './ChatView'
@@ -145,10 +145,9 @@ export function DesignsView(props: {
             onDrop={(e) => {
               e.preventDefault()
               setDragOver(false)
-              const paths = Array.from(e.dataTransfer.files)
-                .map((f) => api.pathForFile(f))
-                .filter(Boolean)
-              if (paths.length) void addPaths(paths)
+              void api.filePaths(Array.from(e.dataTransfer.files)).then((paths) => {
+                if (paths.length) void addPaths(paths)
+              })
             }}
           >
             <div className="design-kinds" role="radiogroup" aria-label="What to design">
@@ -305,7 +304,7 @@ export function DesignsView(props: {
                       onKeyDown={(e) => e.key === 'Enter' && props.onOpen(s.id)}
                     >
                       {p ? (
-                        <Thumb src={`artifact://view/${encodeURIComponent(s.id)}/${encodeURIComponent(p.id)}/${p.versions - 1}?t=${p.updatedAt}`} width={k.viewports[0].width} />
+                        <Thumb src={appUrl(`artifact://view/${encodeURIComponent(s.id)}/${encodeURIComponent(p.id)}/${p.versions - 1}?t=${p.updatedAt}`)} width={k.viewports[0].width} />
                       ) : (
                         <div className="design-thumb empty">
                           <Icon name={k.icon} size={26} />

@@ -86,6 +86,9 @@ import { availablePlugins, claudeCodeMcpServers, claudeDir, deleteSkill, importS
 import { cancelMcpSignIn, mcpAuthInfo, refreshMcpTokens, signInMcp, signOutMcp, withMcpAuth } from './mcpAuth'
 import type { PluginAction, SkillDraft } from '../shared/extensions'
 import { isAvatarImage } from '../shared/avatar'
+import { WebServer, type Handler, type ProtocolHandler } from './server'
+import { installDesktopStandIns } from './server/desktop'
+import { serverConfig } from './server/config'
 
 // Artifact previews load from artifact://view/<chat>/<artifact>/<version> in a sandboxed frame;
 // chat images from lcimg://chat/<chat>/<image> (decrypted on request).
@@ -99,6 +102,10 @@ protocol.registerSchemesAsPrivileged([
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
 app.setName('LocalClaude')
+/** Server mode: no window; the app is served to a browser (see src/main/server). */
+const SERVER = serverConfig()
+if (SERVER) process.env.LOCALCLAUDE_MACHINE_ID = SERVER.machineId
+if (SERVER) app.disableHardwareAcceleration()
 // A separate data folder, e.g. for a test profile (must happen before the store reads the path).
 if (process.env.LOCALCLAUDE_USER_DATA) app.setPath('userData', process.env.LOCALCLAUDE_USER_DATA)
 if (!app.requestSingleInstanceLock()) app.quit()
@@ -111,9 +118,20 @@ captureMainProcess()
 let win: BrowserWindow | null = null
 const store = new SecureStore()
 let manager: SessionManager
+let web: WebServer | null = null
+/** Every IPC handler, so server mode can answer the same calls over HTTP. */
+const handlers = new Map<string, Handler>()
+/** artifact://, lcimg:// and lcmod:// handlers, also served over HTTP in server mode. */
+const protocols: Record<string, ProtocolHandler> = {}
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
+  web?.broadcast(channel, payload)
+}
+
+function serveProtocol(scheme: string, fn: ProtocolHandler): void {
+  protocols[scheme] = fn
+  protocol.handle(scheme, fn)
 }
 
 const TITLE_BAR_HEIGHT = 44
@@ -179,10 +197,12 @@ function createWindow(): void {
 
 /** Register an IPC handler that refuses to run while the app data is locked to another machine. */
 function handle(channel: string, fn: (...args: never[]) => unknown, allowLocked = false): void {
-  ipcMain.handle(channel, (_e, ...args) => {
+  const run = (...args: unknown[]): unknown => {
     if (!allowLocked && !store.lock.ok) throw new Error('App is locked: data belongs to another machine')
     return (fn as (...a: unknown[]) => unknown)(...args)
-  })
+  }
+  handlers.set(channel, run)
+  ipcMain.handle(channel, (_e, ...args) => run(...args))
 }
 
 const IMAGE_TYPES: Record<string, string> = {
@@ -246,11 +266,11 @@ function registerIpc(): void {
     log('info', 'DeepSeek API key removed')
     return { ok: true }
   })
-  handle('deepseek:install', () => installDsh((e) => win?.webContents.send('deepseek:install', e)))
+  handle('deepseek:install', () => installDsh((e) => send('deepseek:install', e)))
   handle('deepseek:models', () => manager.deepseekModels)
   // ---- OpenCode: finding and downloading it, and the provider keys it gets (encrypted vault, never sent back)
   handle('opencode:status', () => opencodeStatus(store, store.getSettings()))
-  handle('opencode:download', () => void downloadOpenCode((e) => win?.webContents.send('opencode:download', e)))
+  handle('opencode:download', () => void downloadOpenCode((e) => send('opencode:download', e)))
   handle('opencode:models', () => manager.opencodeModels)
   handle('opencode:saveKey', (env: string, raw: string) => {
     const c = cleanOpenCodeKey(env, raw)
@@ -345,7 +365,7 @@ function registerIpc(): void {
     return { ok: true, warning: 'warning' in check ? check.warning : undefined }
   })
   handle('auth:login', () => {
-    if (win) startLogin(win)
+    startLogin((e) => send('login:event', e))
   })
   handle('auth:loginInput', (text: string) => sendLoginInput(text))
   handle('auth:cancelLogin', () => cancelLogin())
@@ -895,7 +915,7 @@ function registerIpc(): void {
  */
 function serveArtifacts(): void {
   const headers = { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'" }
-  protocol.handle('artifact', (req) => {
+  serveProtocol('artifact', (req) => {
     const url = new URL(req.url)
     // a design while Claude is still writing it (the canvas sends the HTML so far)
     if (url.host === 'draft') return new Response(DRAFT_PAGE, { headers })
@@ -910,7 +930,7 @@ function serveArtifacts(): void {
 
 /** Serves chat images (?w=480 for a smaller copy). Ids are random, so other pages can't guess them. */
 function serveImages(): void {
-  protocol.handle('lcimg', (req) => {
+  serveProtocol('lcimg', (req) => {
     const url = new URL(req.url)
     const [sessionId, imageId] = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
     const data = store.lock.ok && sessionId && imageId ? store.loadImage(sessionId, imageId) : null
@@ -926,7 +946,7 @@ function serveImages(): void {
 // ---- backups: password-protected copies of everything, on demand or on a schedule
 let pendingImport: string | null = null
 let backupRunning = false
-const defaultBackupDir = (): string => join(app.getPath('documents'), 'LocalClaude backups')
+const defaultBackupDir = (): string => (SERVER ? join(SERVER.dataDir, 'backups') : join(app.getPath('documents'), 'LocalClaude backups'))
 
 function backupStatus(): BackupStatus {
   const st = store.getBackupState()
@@ -1118,13 +1138,25 @@ app.whenReady().then(() => {
   registerIpc()
   serveArtifacts()
   serveImages()
-  protocol.handle('lcmod', (req) => serveModFile(req.url, (id) => store.lock.ok && !!store.getSettings().mods?.[id]))
-  createWindow()
-  if (store.lock.ok) applyQuickShortcut(store.getSettings().quickShortcut)
+  serveProtocol('lcmod', (req) => serveModFile(req.url, (id) => store.lock.ok && !!store.getSettings().mods?.[id]))
+  if (SERVER) {
+    web = new WebServer({ ...SERVER, handlers, protocols, rendererDir: join(__dirname, '../renderer'), version: app.getVersion() })
+    installDesktopStandIns(web, SERVER.dataDir)
+    web.start().catch((e) => {
+      log('error', 'web: could not start the server:', e)
+      console.error(e)
+      app.exit(1)
+    })
+  } else {
+    createWindow()
+    if (store.lock.ok) applyQuickShortcut(store.getSettings().quickShortcut)
+  }
   if (!TEST_MODE) scheduleBackups()
 })
 
 app.on('second-instance', () => bringToFront())
+// server mode has no windows; it runs until stopped
+if (SERVER) process.on('SIGTERM', () => app.quit())
 
 app.on('before-quit', () => {
   remote.stop()
@@ -1132,4 +1164,6 @@ app.on('before-quit', () => {
   stopComputerHelper()
 })
 app.on('will-quit', () => globalShortcut.unregisterAll())
-app.on('window-all-closed', () => app.quit())
+app.on('window-all-closed', () => {
+  if (!SERVER) app.quit()
+})

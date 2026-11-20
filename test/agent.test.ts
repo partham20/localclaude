@@ -29,6 +29,9 @@ import { VaultSync, appFolder, detectVaults, obsidianUri } from '../src/main/obs
 import { contextMenuTemplate } from '../src/main/contextMenu'
 import { notificationFor } from '../src/main/notify'
 import { cleanTitle } from '../src/main/titles'
+import { base32Decode, base32Encode, totpAt, verifyTotp } from '../src/main/server/totp'
+import { WebAuth, checkPassword, hashPassword, passwordProblem } from '../src/main/server/auth'
+import { decodeWire, encodeWire } from '../src/shared/wire'
 import { projectDirName, transcriptExists } from '../src/main/transcripts'
 import { mapUsage } from '../src/main/usage'
 import { fitToScreens } from '../src/main/windowState'
@@ -1671,6 +1674,67 @@ function designMode() {
   console.log('✓ design: own title, artifact tool and instructions per kind, only its own tools, matching a codebase, comment mode in the canvas page')
 }
 
+function serverMode() {
+  // RFC 6238 test vector (SHA-1, secret "12345678901234567890"): 94287082 at T=59s, last 6 digits
+  const secret = base32Encode(Buffer.from('12345678901234567890'))
+  assert.equal(base32Decode(secret).toString(), '12345678901234567890')
+  assert.equal(totpAt(secret, 1), '287082')
+  assert.equal(totpAt(secret, Math.floor(1111111109 / 30)), '081804')
+  const now = 1111111109_000
+  const step = Math.floor(now / 30000)
+  assert.equal(verifyTotp(secret, '081804', -1, now), step)
+  assert.equal(verifyTotp(secret, '081 804', -1, now), step, 'spaces are fine')
+  assert.equal(verifyTotp(secret, '081804', step, now), null, 'a code works once')
+  assert.equal(verifyTotp(secret, totpAt(secret, step - 1), -1, now), step - 1, 'the previous code still works (clock drift)')
+  assert.equal(verifyTotp(secret, totpAt(secret, step - 2), -1, now), null)
+  assert.equal(verifyTotp(secret, 'abcdef', -1, now), null)
+
+  const h = hashPassword('correct horse battery')
+  assert.ok(checkPassword('correct horse battery', h) && !checkPassword('wrong horse battery', h))
+  assert.ok(passwordProblem('short') && passwordProblem('aaaaaaaaaaaaaaaa') && !passwordProblem('a fine long password'))
+
+  const dir = mkdtempSync(join(tmpdir(), 'lc-webauth-'))
+  const auth = new WebAuth(join(dir, 'account.json'), join(dir, 'sessions.json'), 'test-secret-0123456789')
+  const tSecret = base32Encode(Buffer.from('abcdefghijabcdefghij'))
+  const cur = Math.floor(Date.now() / 30000)
+  auth.createAccount('a fine long password', tSecret, cur - 2)
+  assert.ok(!readFileSync(join(dir, 'account.json'), 'utf8').includes(tSecret), 'the 2FA secret is stored encrypted')
+  assert.ok(!auth.verify('wrong password here', totpAt(tSecret, cur)))
+  assert.ok(auth.verify('a fine long password', totpAt(tSecret, cur)))
+  assert.ok(!auth.verify('a fine long password', totpAt(tSecret, cur)), 'the same code twice is refused')
+  // with another server secret the 2FA secret can't be read, so nobody gets in
+  const other = new WebAuth(join(dir, 'account.json'), join(dir, 'sessions2.json'), 'another-secret-012345')
+  assert.ok(!other.verify('a fine long password', totpAt(tSecret, cur + 1)))
+
+  const token = auth.createSession(false, '1.2.3.4', 'test')
+  assert.ok(auth.check(token))
+  assert.equal(auth.check(token + 'x'), null)
+  assert.equal(auth.check(token, Date.now() + 8 * 24 * 3600_000), null, 'an idle session expires')
+  const shared = auth.createSession(true, '1.2.3.4', 'test')
+  assert.equal(auth.check(shared, Date.now() + 31 * 60_000), null, 'a shared-computer session ends after 30 idle minutes')
+  const t2 = auth.createSession(false, '1.2.3.4', 'test')
+  auth.endAllSessions()
+  assert.equal(auth.check(t2), null)
+
+  // lockout: 5 wrong tries from one address, then a wait (other addresses still get in)
+  const t0 = Date.now()
+  for (let i = 0; i < 5; i++) auth.recordFailure('9.9.9.9', t0)
+  assert.ok(auth.lockedFor('9.9.9.9', t0) > 800)
+  assert.equal(auth.lockedFor('8.8.8.8', t0), 0)
+  assert.equal(auth.lockedFor('9.9.9.9', t0 + 16 * 60_000), 0)
+  // many failures from many addresses lock everyone out for a while
+  for (let i = 0; i < 30; i++) auth.recordFailure('10.0.0.' + i, t0)
+  assert.ok(auth.lockedFor('8.8.8.8', t0) > 0)
+  rmSync(dir, { recursive: true, force: true })
+
+  // undefined arguments survive the trip to the server (JSON alone would turn them into null)
+  const back = decodeWire(encodeWire({ ch: 'x', args: [undefined, 'id', { a: undefined, b: 1 }] })) as { args: unknown[] }
+  assert.equal(back.args[0], undefined)
+  assert.equal(back.args[1], 'id')
+  assert.deepEqual(back.args[2], { b: 1 })
+  console.log('✓ server mode: 2FA codes, passwords, sessions, lockout, undefined over the wire')
+}
+
 function streamingJson() {
   const full = JSON.stringify({ id: 'shop', type: 'html', n: 3, opts: { a: '}', b: [1, '"'] }, title: 'Tea "Shop"', content: '<h1>Hi</h1>\n<p>Ünïcode ☕ \\ done</p>' })
   // every cut-off point reads without throwing, and what's there so far is right
@@ -1990,6 +2054,7 @@ await extensionsAndConnectors()
 designMode()
 streamingJson()
 await remoteControl()
+serverMode()
 // The live test sends one tiny real prompt through Claude Code (uses your plan). Opt in with LOCALCLAUDE_E2E=1.
 if (process.env.LOCALCLAUDE_E2E) await realSpawn()
 else console.log('(skipping live test; set LOCALCLAUDE_E2E=1 to run it)')

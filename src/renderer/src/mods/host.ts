@@ -2,6 +2,7 @@
 // The rest of the app reads what mods added (commands, sidebar buttons, status items, themes)
 // from the snapshot, through useModHost().
 import { useSyncExternalStore } from 'react'
+import { appUrl } from '../api'
 import { parseTheme, type Appearance, type ModInfo, type ThemePreset } from '../../../shared/customize'
 import type { AppSettings } from '../../../shared/types'
 
@@ -126,7 +127,7 @@ class ModHost {
   private async start(m: ModInfo): Promise<void> {
     this.set({ running: [...this.snap.running, m.id] })
     try {
-      const url = `lcmod://${m.id}/${m.main}?v=${Date.now()}`
+      const url = appUrl(`lcmod://${m.id}/${m.main}?v=${Date.now()}`)
       const mod = (await import(/* @vite-ignore */ url)) as { default?: (api: unknown) => unknown }
       if (typeof mod.default !== 'function') throw new Error('The script has no default export (export default function activate(lc) { … }).')
       const r = await mod.default(this.apiFor(m))
