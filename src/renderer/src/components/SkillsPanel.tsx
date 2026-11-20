@@ -192,7 +192,7 @@ export function SkillsPanel({ settings, onChange }: { settings: AppSettings; onC
           ))
       )}
       <p className="muted small">
-        DeepSeek chats get the list of skills that are on, with what each is for, and read a skill’s instructions when a task matches it. Changes apply to each chat the next time you send a message.
+        DeepSeek and OpenCode chats get the list of skills that are on, with what each is for, and read a skill’s instructions when a task matches it. Changes apply to each chat the next time you send a message.
       </p>
     </div>
   )

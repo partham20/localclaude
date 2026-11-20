@@ -14,6 +14,7 @@ import { billsConsoleKey } from '../../../shared/billing'
 import { ConsoleKeySettings, OAuthTokenSettings, SignOut } from './Billing'
 import { ShortcutField, StylesEditor, UsagePanel } from './SettingsExtras'
 import { DeepSeekPanel } from './DeepSeekSettings'
+import { OpenCodePanel } from './OpenCodeSettings'
 import { claudeModelMenu } from '../../../shared/models'
 
 const TABS: [string, string, string][] = [
@@ -30,6 +31,7 @@ const TABS: [string, string, string][] = [
   ['backups', 'Backups', 'upload'],
   ['usage', 'Usage', 'sliders'],
   ['deepseek', 'DeepSeek', 'terminal'],
+  ['opencode', 'OpenCode', 'terminal'],
   ['account', 'Account & privacy', 'key'],
   ['about', 'About', 'question']
 ]
@@ -397,6 +399,7 @@ export function SettingsDialog(props: {
           {props.tab === 'backups' && <BackupsPanel settings={s} onChange={props.onChange} onRestore={props.onImport} />}
 
           {props.tab === 'deepseek' && <DeepSeekPanel settings={s} auth={props.auth} onChange={props.onChange} onAuthChanged={props.onAuthChanged} />}
+          {props.tab === 'opencode' && <OpenCodePanel settings={s} onChange={props.onChange} onAuthChanged={props.onAuthChanged} />}
           {props.tab === 'account' && (
             <>
               <h2>Account & privacy</h2>
@@ -408,7 +411,7 @@ export function SettingsDialog(props: {
                   <span>Plan</span>
                   <span>{props.auth.subscriptionType ?? 'Claude subscription'}</span>
                   <span>Sign-in</span>
-                  <span>{signInLabel(props.auth)}</span>
+                  <span>{signInLabel(props.auth, s)}</span>
                 </div>
                 {props.auth.usingApiKeyEnv && (
                   <p className="notice">
@@ -416,14 +419,16 @@ export function SettingsDialog(props: {
                     {consoleKey ? 'only your subscription and LOCALCLAUDE_API_KEY are used.' : 'only your subscription is used.'}
                   </p>
                 )}
-                {!props.auth.loggedIn && props.auth.deepseekKey ? (
+                {!props.auth.loggedIn && (props.auth.deepseekKey || s.signInMethod === 'opencode') ? (
                   <>
-                    <p className="muted small">You’re using DeepSeek Harness only. Sign in to Claude to switch chats to Claude Code too.</p>
+                    <p className="muted small">
+                      You’re using {s.signInMethod === 'opencode' ? 'OpenCode' : 'DeepSeek Harness'} only. Sign in to Claude to switch chats to Claude Code too.
+                    </p>
                     <div className="row gap">
                       <button className="btn primary" onClick={props.onSignInClaude}>
                         Sign in to Claude…
                       </button>
-                      {s.signInMethod === 'deepseek' && (
+                      {(s.signInMethod === 'deepseek' || s.signInMethod === 'opencode') && (
                         <button className="btn danger" onClick={() => void props.onLogout()}>
                           Sign out
                         </button>
@@ -523,7 +528,8 @@ export function SettingsDialog(props: {
 }
 
 /** How you're signed in, in words. */
-function signInLabel(auth: AuthStatus): string {
+function signInLabel(auth: AuthStatus, s: AppSettings): string {
+  if (!auth.loggedIn && s.signInMethod === 'opencode') return 'OpenCode only (not signed in to Claude)'
   if (!auth.loggedIn && auth.deepseekKey) return 'DeepSeek Harness only (not signed in to Claude)'
   if (auth.apiKeyOnly) return 'Console API key only'
   if (auth.usingOAuthTokenEnv) return 'Subscription token (CLAUDE_CODE_OAUTH_TOKEN)'

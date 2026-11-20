@@ -605,3 +605,11 @@
 .profile-picture {
   align-items: center;
 }
+.menu-search {
+  margin: 2px 2px 6px;
+  padding: 6px 9px;
+  font-size: 13px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}

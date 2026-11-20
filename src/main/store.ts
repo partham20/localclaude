@@ -33,6 +33,8 @@ interface Vault {
   oauthToken?: string
   /** DeepSeek API key for DeepSeek Harness chats; same rules as the Console key */
   deepseekApiKey?: string
+  /** provider keys for OpenCode chats, by the environment variable OpenCode reads (OPENAI_API_KEY…); same rules as the Console key */
+  opencodeKeys?: Record<string, string>
   /** connectors you signed in to (OAuth), by server URL: never sent to the window, never in exports or backups */
   mcpAuth?: Record<string, McpAuthRecord>
   /** the model menu Claude Code last reported for this account, so new chats show it before their first message */
@@ -291,6 +293,19 @@ export class SecureStore {
   setDeepSeekKey(key: string | undefined): void {
     if (key) this.vault.deepseekApiKey = key
     else delete this.vault.deepseekApiKey
+    this.saveVault()
+  }
+
+  // ---------- OpenCode provider keys ----------
+  getOpenCodeKeys(): Record<string, string> {
+    return { ...(this.vault?.opencodeKeys ?? {}) }
+  }
+  setOpenCodeKey(env: string, key: string | undefined): void {
+    const keys = { ...(this.vault.opencodeKeys ?? {}) }
+    if (key) keys[env] = key
+    else delete keys[env]
+    if (Object.keys(keys).length) this.vault.opencodeKeys = keys
+    else delete this.vault.opencodeKeys
     this.saveVault()
   }
 

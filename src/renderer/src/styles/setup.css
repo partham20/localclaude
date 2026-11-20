@@ -344,3 +344,49 @@
 .deepseek-found svg {
   color: var(--accent);
 }
+/* OpenCode: the download card and provider keys */
+.opencode-download {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.opencode-found {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.opencode-found svg {
+  color: var(--accent);
+}
+.opencode-progress .progress-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-soft, color-mix(in srgb, currentColor 10%, transparent));
+  overflow: hidden;
+}
+.opencode-progress .progress-bar > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 200ms ease;
+}
+.opencode-keys,
+.opencode-key-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.opencode-key-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.opencode-key {
+  align-items: center;
+}
+.opencode-credit {
+  margin-top: 18px;
+}

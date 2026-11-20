@@ -11,7 +11,7 @@ export const steps = [
   {
     name: 'deepseek: setup offers DeepSeek Harness, and a DeepSeek key is enough',
     run: async (c) => {
-      await c.waitFor('the setup screen', "__t.qa('.method').length === 4")
+      await c.waitFor('the setup screen', "__t.qa('.method').length === 5")
       await c.page("__t.click(__t.q('.method[data-method=\"deepseek\"]'))")
       await c.page("__t.click(__t.q('.setup-continue'))")
       await c.waitFor('the DeepSeek page', "__t.text('.step-head h2') === 'Use DeepSeek Harness'")
@@ -129,7 +129,7 @@ export const steps = [
       await c.openSettings('Account')
       await c.waitFor('DeepSeek only', "__t.text('.modal').includes('DeepSeek Harness only') && !!__t.byText('.modal .btn', 'Sign in to Claude')")
       await c.page("__t.click(__t.byText('.modal .btn.danger', 'Sign out'))")
-      await c.waitFor('the setup screen again', "__t.qa('.method').length === 4")
+      await c.waitFor('the setup screen again', "__t.qa('.method').length === 5")
     }
   }
 ]

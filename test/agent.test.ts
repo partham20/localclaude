@@ -35,6 +35,11 @@ import { fitToScreens } from '../src/main/windowState'
 import { resolveStyle } from '../src/shared/styles'
 import { DeepSeekSession, cleanDeepSeekKey, displayTool, dshPermissionMode, toolOutput } from '../src/main/deepseek'
 import { deepseekModelLabel } from '../src/shared/deepseek'
+import { OpenCodeSession, cleanOpenCodeKey, opencodeConfig, opencodePackage, opencodePermissions, opencodeTool, tarEntryWriter } from '../src/main/opencode'
+import { opencodeModelLabel, opencodeProvider } from '../src/shared/opencode'
+import { gzipSync } from 'node:zlib'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { MODEL_ALIASES, claudeModelMenu } from '../src/shared/models'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -334,6 +339,12 @@ function memStore() {
     setGlobalMemory: (m: any[]) => (s.memory = m),
     getSettings: (): AppSettings => s.settings,
     getDeepSeekKey: () => (s as any).deepseekKey as string | undefined,
+    getOpenCodeKeys: () => ({ ...((s as any).opencodeKeys ?? {}) }) as Record<string, string>,
+    setOpenCodeKey: (env: string, key: string | undefined) => {
+      const k = ((s as any).opencodeKeys ??= {})
+      if (key) k[env] = key
+      else delete k[env]
+    },
     getNotePath: (id: string) => s.notes[id],
     setNotePath: (id: string, rel: string | undefined) => (rel ? (s.notes[id] = rel) : delete s.notes[id]),
     saveImage: (sid: string, id: string, data: Buffer) => s.images.set(`${sid}/${id}`, data),
@@ -1117,6 +1128,175 @@ async function deepseekEngine() {
   console.log('✓ DeepSeek Harness: tools, sandbox modes, key check, a real ACP exchange, switching harness both ways')
 }
 
+/** A tar archive like npm's tarballs, with one GNU long-name entry. */
+function tarOf(files: { name: string; data: Buffer; longName?: boolean }[]): Buffer {
+  const blocks: Buffer[] = []
+  const header = (name: string, size: number, type: string): Buffer => {
+    const h = Buffer.alloc(512)
+    h.write(name.slice(0, 99), 0, 'utf8')
+    h.write('0000755\0', 100)
+    h.write('0000000\0', 108)
+    h.write('0000000\0', 116)
+    h.write(size.toString(8).padStart(11, '0') + '\0', 124)
+    h.write('00000000000\0', 136)
+    h.write('        ', 148)
+    h.write(type, 156)
+    h.write('ustar\0', 257)
+    h.write('00', 263)
+    let sum = 0
+    for (const b of h) sum += b
+    h.write(sum.toString(8).padStart(6, '0') + '\0 ', 148)
+    return h
+  }
+  const pad = (n: number): Buffer => Buffer.alloc((512 - (n % 512)) % 512)
+  for (const f of files) {
+    if (f.longName) {
+      const name = Buffer.from(f.name + '\0')
+      blocks.push(header('././@LongLink', name.length, 'L'), name, pad(name.length))
+    }
+    blocks.push(header(f.longName ? 'x' : f.name, f.data.length, '0'), f.data, pad(f.data.length))
+  }
+  blocks.push(Buffer.alloc(1024))
+  return Buffer.concat(blocks)
+}
+
+/** OpenCode: which build is downloaded, unpacking it, its tools shown like Claude Code's, permission modes, keys, and a real ACP exchange with the scripted OpenCode. */
+async function opencodeEngine() {
+  assert.equal(opencodePackage('win32', 'x64', false), '@opencode/cli-windows-x64')
+  assert.equal(opencodePackage('linux', 'x64', false), '@opencode/cli-linux-x64')
+  assert.equal(opencodePackage('linux', 'arm64', true), '@opencode/cli-linux-arm64-musl')
+  assert.equal(opencodePackage('darwin', 'arm64', false), '@opencode/cli-darwin-arm64')
+  assert.equal(opencodePackage('win32', 'ia32', false), null)
+  assert.equal(opencodePackage('freebsd', 'x64', false), null)
+
+  // unpacking: only the binary is written, whatever comes before it and however long its name
+  const dir = mkdtempSync(join(tmpdir(), 'lc-oc-'))
+  const bin = Buffer.alloc(70_000, 7)
+  bin.write('BINARY-START')
+  const tgz = gzipSync(
+    tarOf([
+      { name: 'package/package.json', data: Buffer.from('{"name":"x"}') },
+      { name: 'package/' + 'deep/'.repeat(25) + 'README.md', data: Buffer.from('hi'), longName: true },
+      { name: 'package/bin/opencode', data: bin }
+    ])
+  )
+  const dest = join(dir, 'opencode')
+  const w = tarEntryWriter((p) => /(^|\/)bin\/opencode(\.exe)?$/.test(p), dest)
+  // small chunks, so headers and data straddle them
+  const chunks: Buffer[] = []
+  for (let i = 0; i < tgz.length; i += 777) chunks.push(tgz.subarray(i, i + 777))
+  const { createGunzip } = await import('node:zlib')
+  await pipeline(Readable.from(chunks), createGunzip(), w)
+  assert.ok(w.found())
+  assert.ok(readFileSync(dest).equals(bin), 'the binary comes out byte for byte')
+  const w2 = tarEntryWriter((p) => p.endsWith('bin/opencode'), join(dir, 'none'))
+  await pipeline(Readable.from([gzipSync(tarOf([{ name: 'package/x', data: Buffer.from('x') }]))]), createGunzip(), w2)
+  assert.ok(!w2.found() && !existsSync(join(dir, 'none')))
+  rmSync(dir, { recursive: true, force: true })
+
+  // OpenCode's tools as Claude Code's
+  assert.deepEqual(opencodeTool('shell', 'ls', { command: 'ls', cwd: '/x' }), { name: 'Bash', input: { command: 'ls', cwd: '/x', description: undefined } })
+  assert.equal(opencodeTool('read', 'a.ts', { path: 'a.ts' }).input.file_path, 'a.ts')
+  assert.deepEqual(opencodeTool('edit', 'a.ts', { path: 'a.ts', oldString: 'a', newString: 'b' }).input, { file_path: 'a.ts', old_string: 'a', new_string: 'b', replace_all: undefined })
+  assert.equal(opencodeTool('write', 'a', { path: 'a', content: 'c' }).name, 'Write')
+  assert.equal(opencodeTool('task', 'x', { agent: 'explore', description: 'd', prompt: 'p' }).input.subagent_type, 'explore')
+  assert.equal(opencodeTool('skill', 'x', { id: 'pdf' }).input.skill, 'pdf')
+  assert.equal(opencodeTool('my_mcp_tool', 'title', {}).name, 'my_mcp_tool', 'unknown tools keep their name')
+  assert.equal(opencodeTool(undefined, 'websearch', { query: 'q' }).name, 'WebSearch', 'the title stands in for a missing name')
+
+  // permission modes as OpenCode rules
+  const actions = (m: any) => opencodePermissions(m).map((r) => `${r.action}:${r.effect}`)
+  assert.deepEqual(actions('default'), ['shell:ask', 'webfetch:ask', 'external_directory:ask', 'edit:ask'])
+  assert.deepEqual(actions('acceptEdits'), ['shell:ask', 'webfetch:ask', 'external_directory:ask', 'edit:allow'])
+  assert.deepEqual(actions('bypassPermissions'), ['*:allow'])
+  assert.equal((opencodeConfig({ permissionMode: 'default' }) as any).update, 'disable')
+
+  // keys: by variable name, never ones that would change how programs run
+  assert.deepEqual(cleanOpenCodeKey(' openai_api_key ', ' "sk-abc" '), { env: 'OPENAI_API_KEY', key: 'sk-abc' })
+  assert.ok('error' in cleanOpenCodeKey('PATH', 'x'))
+  assert.ok('error' in cleanOpenCodeKey('NODE_OPTIONS', 'x'))
+  assert.ok('error' in cleanOpenCodeKey('BAD NAME', 'x'))
+  assert.ok('error' in cleanOpenCodeKey('OPENAI_API_KEY', 'has space'))
+  assert.equal(opencodeModelLabel('openai/gpt-5.5'), 'gpt-5.5')
+  assert.equal(opencodeModelLabel(''), 'Default')
+  assert.equal(opencodeProvider('opencode/big-pickle'), 'opencode')
+
+  // new chats follow the default harness
+  const st: any = memStore()
+  st._s.settings.defaultEngine = 'opencode'
+  st._s.settings.opencodeModel = 'openai/gpt-5.5'
+  const events: any[] = []
+  const m = new SessionManager(st, (e) => events.push(e), { transcriptExists: () => true })
+  const chat = m.create(process.cwd())
+  assert.equal(chat.engine, 'opencode')
+  assert.equal(chat.model, 'openai/gpt-5.5')
+  assert.ok((m as any).get(chat.id) instanceof OpenCodeSession)
+  assert.equal(m.create(process.cwd(), undefined, { kind: 'prototype' } as any).engine, undefined, 'designs use Claude Code')
+
+  // a real ACP exchange with the scripted OpenCode
+  process.env.LOCALCLAUDE_OPENCODE = process.cwd() + '/test/e2e/fake-opencode.mjs'
+  st.setOpenCodeKey('OPENAI_API_KEY', 'sk-TEST-ONLY')
+  const waitFor = async (what: string, fn: () => boolean) => {
+    for (let i = 0; i < 100 && !fn(); i++) await new Promise((r) => setTimeout(r, 50))
+    assert.ok(fn(), 'timed out waiting for ' + what)
+  }
+  const text = () => JSON.stringify(m.history(chat.id))
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4a00000000049454e44ae426082', 'hex')
+  m.send({ sessionId: chat.id, text: 'what do you know', attachments: [{ base64: png.toString('base64'), mediaType: 'image/png' } as any] })
+  await waitFor('a reply', () => text().includes('OpenCode facts') && !m.isRunning(chat.id))
+  assert.match(text(), /model=openai\/gpt-5.5 mode=build rules=shell:ask,webfetch:ask,external_directory:ask,edit:ask update=disable openai=yes autoupdate=off images=1/)
+  assert.ok(st.getSession(chat.id).sdkSessionId?.startsWith('ses_'), 'OpenCode’s session id is kept for resuming')
+  assert.ok(m.opencodeModels.some((x) => x.value === 'openai/gpt-5.5'), 'the model menu gets OpenCode’s list')
+  const done = events.filter((e) => e.type === 'turn-done').at(-1)
+  assert.equal(done.stats.inputTokens, 120)
+  // a command asks first (OpenCode's own name for the tool picks the card); allowing it is passed on
+  m.send({ sessionId: chat.id, text: 'run a command', attachments: [] })
+  await waitFor('the permission', () => events.some((e) => e.type === 'permission'))
+  const req = events.find((e) => e.type === 'permission').request
+  assert.equal(req.toolName, 'Bash')
+  assert.equal(req.input.command, 'ls')
+  assert.match(req.title, /Allow OpenCode/)
+  m.respond(chat.id, req.requestId, { behavior: 'allow' })
+  await waitFor('the tool', () => text().includes('OpenCode found two files.') && !m.isRunning(chat.id))
+  const tool = m.history(chat.id).flatMap((x) => x.parts).find((p: any) => p.kind === 'tool') as any
+  assert.equal(tool.name, 'Bash')
+  assert.equal(tool.input.command, 'ls')
+  assert.match(tool.result, /gamma.txt/)
+  // retries are mentioned once
+  m.send({ sessionId: chat.id, text: 'flaky', attachments: [] })
+  await waitFor('the retry', () => text().includes('second try') && !m.isRunning(chat.id))
+  assert.match(text(), /retrying after an error from the provider: overloaded/)
+  // Plan mode: OpenCode's plan agent, no restart needed
+  await m.setMode(chat.id, 'plan')
+  m.send({ sessionId: chat.id, text: 'what do you know', attachments: [] })
+  await waitFor('plan', () => /mode=plan/.test(text()) && !m.isRunning(chat.id))
+  // Full access changes the rules: OpenCode restarts and the session resumes
+  await m.setMode(chat.id, 'bypassPermissions')
+  const before = st.getSession(chat.id).sdkSessionId
+  m.send({ sessionId: chat.id, text: 'what do you know', attachments: [] })
+  await waitFor('full access', () => /rules=\*:allow/.test(text()) && !m.isRunning(chat.id))
+  assert.equal(st.getSession(chat.id).sdkSessionId, before, 'the same session resumes')
+  // a model OpenCode doesn't have is said so, and the chat goes on
+  await m.setModel(chat.id, 'nope/model')
+  m.send({ sessionId: chat.id, text: 'hello there', attachments: [] })
+  await waitFor('the reply', () => text().includes('OpenCode says: hello there') && !m.isRunning(chat.id))
+  assert.match(text(), /couldn’t switch to nope\/model/)
+
+  // switching harness: to DeepSeek and to Claude Code, keeping the chat
+  const toDs = m.setEngine(chat.id, 'deepseek')
+  assert.equal(toDs.engine, 'deepseek')
+  assert.equal(toDs.switchedFrom, 'opencode')
+  assert.match(importedContext(toDs, m.history(chat.id), 'deepseek'), /switched to you from OpenCode/)
+  const back = m.setEngine(chat.id, 'opencode')
+  assert.equal(back.engine, 'opencode')
+  assert.ok(m.history(chat.id).some((x) => x.role === 'system' && /Switched to OpenCode/.test(JSON.stringify(x.parts))))
+  m.send({ sessionId: chat.id, text: 'what do you know', attachments: [] })
+  await waitFor('context', () => /context=yes/.test(text()) && !m.isRunning(chat.id))
+  m.shutdownAll()
+  delete process.env.LOCALCLAUDE_OPENCODE
+  console.log('✓ OpenCode: build per platform, unpacking, tools, permission modes, keys, a real ACP exchange, switching harness')
+}
+
 /** Skills, plugins and connectors: what's found on disk, switched off, imported, and passed to both engines. */
 async function extensionsAndConnectors() {
   // SKILL.md frontmatter: plain, quoted and folded values
@@ -1761,6 +1941,7 @@ await signInChoices()
 // before the rest: a failure further down (e.g. designMode) stops the suite, and this must still run
 await consoleKeyBilling()
 await deepseekEngine()
+await opencodeEngine()
 await subscriptionToken()
 await checkpointsAndRewind()
 await slashCommandOutput()

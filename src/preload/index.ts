@@ -38,6 +38,7 @@ import type {
   Engine
 } from '../shared/types'
 import type { DeepSeekInstallEvent, DeepSeekStatus } from '../shared/deepseek'
+import type { OpenCodeDownloadEvent, OpenCodeStatus } from '../shared/opencode'
 import type { AvailablePlugin, ClaudeCodeMcpServer, McpAuthInfo, PluginAction, PluginActionResult, PluginState, SkillDraft, SkillInfo } from '../shared/extensions'
 
 /** Memory after a change, plus the updated project when it was project memory. */
@@ -75,6 +76,13 @@ const api = {
   installDeepSeek: () => inv<void>('deepseek:install'),
   onDeepSeekInstall: (cb: (e: DeepSeekInstallEvent) => void) => on<DeepSeekInstallEvent>('deepseek:install', cb),
   deepseekModels: () => inv<{ value: string; displayName: string; description: string }[]>('deepseek:models'),
+  useOpenCode: () => inv<{ ok: boolean; error?: string }>('auth:useOpenCode'),
+  opencodeStatus: () => inv<OpenCodeStatus>('opencode:status'),
+  downloadOpenCode: () => inv<void>('opencode:download'),
+  onOpenCodeDownload: (cb: (e: OpenCodeDownloadEvent) => void) => on<OpenCodeDownloadEvent>('opencode:download', cb),
+  opencodeModels: () => inv<{ value: string; displayName: string; description: string }[]>('opencode:models'),
+  saveOpenCodeKey: (env: string, key: string) => inv<{ ok: boolean; error?: string }>('opencode:saveKey', env, key),
+  removeOpenCodeKey: (env: string) => inv<{ ok: boolean }>('opencode:removeKey', env),
   onLogin: (cb: (e: LoginEvent) => void) => on<LoginEvent>('login:event', cb),
 
   getSettings: () => inv<AppSettings>('settings:get'),

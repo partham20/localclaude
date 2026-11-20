@@ -22,8 +22,16 @@ export function Menu(props: {
   align?: 'left' | 'right'
   direction?: 'up' | 'down'
   footer?: ReactNode
+  /** a filter box at the top once there are more items than this (long lists, like OpenCode's models) */
+  searchOver?: number
 }) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const items = props.entries.filter((e): e is MenuItem => e !== 'divider' && !('section' in e))
+  const searchable = props.searchOver !== undefined && items.length > props.searchOver
+  const q = query.trim().toLowerCase()
+  const text = (n: ReactNode): string => (typeof n === 'string' || typeof n === 'number' ? String(n) : '')
+  const shown: MenuEntry[] = searchable && q ? items.filter((e) => (text(e.label) + ' ' + text(e.hint) + ' ' + e.key).toLowerCase().includes(q)) : props.entries
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
@@ -45,12 +53,38 @@ export function Menu(props: {
   }, [open])
   return (
     <div className={'menu-wrap ' + (props.className ?? '')} ref={ref}>
-      <button className={'menu-trigger' + (open ? ' open' : '')} onClick={() => setOpen(!open)} title={props.title}>
+      <button
+        className={'menu-trigger' + (open ? ' open' : '')}
+        onClick={() => {
+          setOpen(!open)
+          setQuery('')
+        }}
+        title={props.title}
+      >
         {props.trigger}
       </button>
       {open && (
         <div className={`menu-pop ${props.align ?? 'left'} ${props.direction ?? 'down'}`} role="menu">
-          {props.entries.map((e, i) =>
+          {searchable && (
+            <input
+              className="input menu-search"
+              autoFocus
+              placeholder="Filter…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const first = shown.find((x): x is MenuItem => x !== 'divider' && !('section' in x) && !x.disabled)
+                  if (first) {
+                    setOpen(false)
+                    first.onSelect()
+                  }
+                }
+              }}
+            />
+          )}
+          {searchable && q && !shown.length && <div className="menu-section">Nothing matches</div>}
+          {shown.map((e, i) =>
             e === 'divider' ? (
               <div key={'d' + i} className="menu-divider" />
             ) : 'section' in e ? (

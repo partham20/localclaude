@@ -200,7 +200,7 @@ export function PluginsPanel({ settings }: { settings: AppSettings }) {
         </div>
       </div>
       <p className="muted small">
-        In DeepSeek chats, a plugin’s skills and MCP servers work too. Its slash commands, agents and hooks are Claude Code features, so they only work in Claude Code chats.
+        In DeepSeek and OpenCode chats, a plugin’s skills and MCP servers work too. Its slash commands, agents and hooks are Claude Code features, so they only work in Claude Code chats.
       </p>
     </div>
   )

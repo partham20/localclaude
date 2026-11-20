@@ -2,6 +2,8 @@ A personal desktop app for Claude on Windows and Linux, powered by Claude Code a
 
 ## What's new
 
+- **OpenCode** (Settings → OpenCode). A third harness next to Claude Code and DeepSeek: run any chat on [OpenCode](https://github.com/anomalyco/opencode), the open-source coding agent, with 75+ providers (OpenAI, Gemini, OpenRouter, xAI, Groq, Mistral, Bedrock, Azure, GitHub Copilot and more), local models, or OpenCode Zen's free models that need no account. LocalClaude downloads OpenCode for you the first time (about 120 MB, checked against npm's checksum), keeps your provider keys in its encrypted vault, and shows OpenCode's tools, permission prompts and models in the usual chat window. Pick **OpenCode** on the setup screen to use it without a Claude sign-in, and switch any chat between harnesses from its model menu.
+- **Long model menus have a filter box**, so finding one of OpenCode's hundreds of models is quick.
 - **Skills** (Settings → Skills). See every skill your chats can use: yours, your default folder's and your plugins'. Switch any off, write or edit one, or add one from a folder or a `.zip` / `.skill` file.
 - **Plugins** (Settings → Plugins). Browse Claude Code's plugin directory and any marketplace you add, then install, switch on and off, update or uninstall plugins. It uses Claude Code's own plugin commands, so Claude Code in a terminal sees the same plugins.
 - **Connectors** (Settings → Connectors). Add popular connectors (Notion, Linear, Sentry, Atlassian, GitHub, Context7 and more) in one click, use **Sign in** for servers that need you to log in, and copy the MCP servers Claude Code already has. Your MCP server list moved here from Tools & computer.
@@ -22,7 +24,7 @@ A personal desktop app for Claude on Windows and Linux, powered by Claude Code a
 
 The installers aren't code-signed, so Windows SmartScreen may say "Windows protected your PC": choose **More info → Run anyway**.
 
-On first launch, the setup screen asks how to sign in: your Claude subscription in the browser, a token from `claude setup-token` ([how](https://github.com/partham20/localclaude#sign-in-with-a-subscription-token-instead)), or a Console API key. Your chats are stored encrypted on that computer only.
+On first launch, the setup screen asks how to sign in: your Claude subscription in the browser, a token from `claude setup-token` ([how](https://github.com/partham20/localclaude#sign-in-with-a-subscription-token-instead)), a Console API key, DeepSeek Harness, or OpenCode. Your chats are stored encrypted on that computer only.
 
 Make it yours in **Settings → Appearance** (themes, colors, fonts, sizes, your own CSS), **Settings → Keyboard**, **Ctrl+K**, and **Settings → Mods** ([guide](https://github.com/partham20/localclaude/blob/main/MODS.md)).
 

@@ -43,7 +43,7 @@ import { SIDEBAR_WIDTH, Sidebar } from './components/Sidebar'
 import { Icon } from './components/Icon'
 import { Spark } from './components/Spark'
 import { billsConsoleKey } from '../../shared/billing'
-import { engineLabel } from '../../shared/deepseek'
+import { ENGINES, engineLabel } from '../../shared/deepseek'
 
 export interface SessionRuntime {
   status: 'idle' | 'running' | 'starting'
@@ -202,7 +202,7 @@ export default function App() {
   /** the look-picking step after signing in on the setup screen */
   const [onboarding, setOnboarding] = useState(false)
   // signed in to Claude, or set up with DeepSeek Harness only (a DeepSeek key, no Claude sign-in)
-  const ready = !!auth && (auth.loggedIn || (settings?.signInMethod === 'deepseek' && !!auth.deepseekKey))
+  const ready = !!auth && (auth.loggedIn || (settings?.signInMethod === 'deepseek' && !!auth.deepseekKey) || (settings?.signInMethod === 'opencode' && !!auth.opencodeReady))
 
   // how you sign in lives in settings too (signInMethod, defaultEngine), so read both
   const refreshAuth = useCallback(async () => {
@@ -639,34 +639,35 @@ export default function App() {
       ['usage', 'Usage', 'sliders']
     ]
     tabs.push(['deepseek', 'DeepSeek Harness', 'terminal'])
+    tabs.push(['opencode', 'OpenCode', 'terminal'])
     for (const [tab, label, icon] of tabs) items.push({ id: `settings:${tab}`, title: `Settings: ${label}`, run: () => setSettingsOpen(tab), icon, group: 'Settings' })
     // switch harness: the chat you're in, and what new chats use
     const current = sessions.find((x) => x.id === activeId)
     if (current && !current.design) {
-      const to = current.engine === 'deepseek' ? 'claude' : 'deepseek'
-      items.push({
-        id: 'engine:switch',
-        title: `Switch harness: move this chat to ${engineLabel(to)}`,
-        keywords: 'engine deepseek claude dsh model provider',
-        run: () =>
-          void api.setEngine(current.id, to).then(
-            (m) => setSessions((list) => list.map((x) => (x.id === m.id ? m : x))),
-            (e: unknown) => setToast({ text: String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), error: true })
-          ),
-        icon: 'terminal',
-        group: 'Chat'
-      })
+      for (const to of ENGINES.map((e) => e.value).filter((v) => v !== (current.engine ?? 'claude')))
+        items.push({
+          id: 'engine:switch:' + to,
+          title: `Switch harness: move this chat to ${engineLabel(to)}`,
+          keywords: 'engine deepseek claude dsh opencode model provider',
+          run: () =>
+            void api.setEngine(current.id, to).then(
+              (m) => setSessions((list) => list.map((x) => (x.id === m.id ? m : x))),
+              (e: unknown) => setToast({ text: String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), error: true })
+            ),
+          icon: 'terminal',
+          group: 'Chat'
+        })
     }
     if (settings) {
-      const next = settings.defaultEngine === 'deepseek' ? 'claude' : 'deepseek'
-      items.push({
-        id: 'engine:default',
-        title: `Switch harness: new chats use ${engineLabel(next)}`,
-        keywords: 'engine deepseek claude dsh default',
-        run: () => void updateSettings({ defaultEngine: next }),
-        icon: 'terminal',
-        group: 'Settings'
-      })
+      for (const next of ENGINES.map((e) => e.value).filter((v) => v !== settings.defaultEngine))
+        items.push({
+          id: 'engine:default:' + next,
+          title: `Switch harness: new chats use ${engineLabel(next)}`,
+          keywords: 'engine deepseek claude dsh opencode default',
+          run: () => void updateSettings({ defaultEngine: next }),
+          icon: 'terminal',
+          group: 'Settings'
+        })
     }
     const a = settings ? normalizeAppearance(settings.appearance) : null
     for (const t of allThemes(modSnap.themes))

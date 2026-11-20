@@ -79,6 +79,7 @@ import {
 } from './projects'
 import { SecureStore } from './store'
 import { checkDeepSeekKey, cleanDeepSeekKey, deepseekKeySource, deepseekStatus, installDsh } from './deepseek'
+import { cleanOpenCodeKey, downloadOpenCode, findOpenCode, opencodeStatus } from './opencode'
 import type { Engine } from '../shared/types'
 import { createZip } from './zip'
 import { availablePlugins, claudeCodeMcpServers, claudeDir, deleteSkill, importSkill, listSkills, pluginAction, pluginState, readSkillFile, saveSkill } from './extensions'
@@ -223,7 +224,7 @@ function registerIpc(): void {
   handle('log:renderer', (message: string) => log('error', `[window] ${String(message).slice(0, 4000)}`), true)
 
   // ---- auth (your Claude subscription, via Claude Code's own login)
-  handle('auth:status', async () => ({ ...(await authStatus()), deepseekKey: deepseekKeySource(store) }))
+  handle('auth:status', async () => ({ ...(await authStatus()), deepseekKey: deepseekKeySource(store), opencodeReady: !!findOpenCode(store.getSettings()) }))
 
   // ---- DeepSeek Harness: its API key (encrypted vault, never sent back), finding and installing dsh
   const saveDeepSeekKey = async (raw: string): Promise<{ ok: boolean; error?: string; warning?: string }> => {
@@ -247,6 +248,32 @@ function registerIpc(): void {
   })
   handle('deepseek:install', () => installDsh((e) => win?.webContents.send('deepseek:install', e)))
   handle('deepseek:models', () => manager.deepseekModels)
+  // ---- OpenCode: finding and downloading it, and the provider keys it gets (encrypted vault, never sent back)
+  handle('opencode:status', () => opencodeStatus(store, store.getSettings()))
+  handle('opencode:download', () => void downloadOpenCode((e) => win?.webContents.send('opencode:download', e)))
+  handle('opencode:models', () => manager.opencodeModels)
+  handle('opencode:saveKey', (env: string, raw: string) => {
+    const c = cleanOpenCodeKey(env, raw)
+    if ('error' in c) return { ok: false, error: c.error }
+    store.setOpenCodeKey(c.env, c.key)
+    log('info', `OpenCode key saved (${c.env})`)
+    // idle OpenCode chats start again with it, so its models show up
+    manager.restartIdle()
+    return { ok: true }
+  })
+  handle('opencode:removeKey', (env: string) => {
+    store.setOpenCodeKey(env, undefined)
+    log('info', `OpenCode key removed (${env})`)
+    manager.restartIdle()
+    return { ok: true }
+  })
+  // The setup screen's OpenCode choice: no Claude sign-in needed, new chats run on OpenCode.
+  handle('auth:useOpenCode', () => {
+    if (!findOpenCode(store.getSettings())) return { ok: false, error: 'Download OpenCode first.' }
+    store.setSettings({ signInMethod: 'opencode', defaultEngine: 'opencode' })
+    log('info', 'Using OpenCode without a Claude sign-in')
+    return { ok: true }
+  })
   // The setup screen's DeepSeek choice: no Claude sign-in needed, new chats run on DeepSeek Harness.
   handle('auth:useDeepSeek', async (raw: string) => {
     const r = await saveDeepSeekKey(raw)
@@ -328,6 +355,8 @@ function registerIpc(): void {
     const method = store.getSettings().signInMethod
     if (method === 'deepseek') {
       store.setDeepSeekKey(undefined)
+      store.setSettings({ defaultEngine: 'claude' })
+    } else if (method === 'opencode') {
       store.setSettings({ defaultEngine: 'claude' })
     } else if (method === 'apiKey') {
       store.setConsoleKey(undefined)
@@ -974,6 +1003,7 @@ const UI_ONLY_SETTINGS = new Set<keyof AppSettings>([
   'defaultEngine',
   'deepseekModel',
   'deepseekEffort',
+  'opencodeModel',
   'theme',
   'replyFont',
   'uiFont',
