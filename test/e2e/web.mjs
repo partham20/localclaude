@@ -98,7 +98,8 @@ try {
     if (i > 100) throw new Error('server did not start:\n' + serverLog)
     await sleep(200)
   }
-  browser = await chromium.launch()
+  // LOCALCLAUDE_CHROME: an installed Chrome/Chromium instead of Playwright's own download (CI uses the runner's Chrome)
+  browser = await chromium.launch(process.env.LOCALCLAUDE_CHROME ? { executablePath: process.env.LOCALCLAUDE_CHROME } : {})
   const context = await browser.newContext({ acceptDownloads: true })
   const page = await context.newPage()
   page.setDefaultTimeout(15000)
