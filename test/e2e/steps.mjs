@@ -715,6 +715,8 @@ export const steps = [
     name: 'an artifact that errors: Fix with Claude, and open it in the browser',
     run: async (c) => {
       await c.page("__t.click(__t.q('.side-new'))")
+      // wait for the new chat itself: typing into the previous chat's box just before it's replaced loses the message
+      await c.waitFor('the new chat', "__t.qa('.turn').length === 0 && !!__t.byText('h2', 'How can I help you today?')")
       await c.send('make broken artifact', 'I made a page (it has a bug).')
       await c.waitFor('the error', "__t.text('.artifact-error').includes('boom from the page')", 15000)
       await c.shot('artifact-error')
