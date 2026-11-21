@@ -61,6 +61,15 @@ function highlight(text: string, query: string): ReactNode {
 }
 
 /** A collapsible sidebar section: Pinned, a folder or project, or a date group. */
+/** Browser version: end this browser's session (a form post, so the server can clear the cookie). */
+function webSignOut(): void {
+  const f = document.createElement('form')
+  f.method = 'post'
+  f.action = '/logout'
+  document.body.append(f)
+  f.submit()
+}
+
 function Section(props: { label: string; open: boolean; count: number; onToggle: () => void; extra?: ReactNode; title?: string; group?: string; children: ReactNode }) {
   return (
     <div className={'side-section' + (props.open ? '' : ' closed')} data-group={props.group}>
@@ -703,7 +712,11 @@ export function Sidebar(props: {
               ...(props.onPalette ? [{ key: 'palette', label: 'Command palette', onSelect: props.onPalette }] : []),
               { key: 'export', label: 'Export all chats…', onSelect: props.onExportAll },
               // a token from CLAUDE_CODE_OAUTH_TOKEN can't be signed out of here (Settings says how)
-              ...(props.auth.usingOAuthTokenEnv && !props.auth.apiKeyOnly ? [] : (['divider', { key: 'signout', label: 'Sign out', onSelect: props.onSignOut }] as const))
+              // the browser version: this browser's own sign-in to LocalClaude (not Claude's)
+              ...(api.isWeb
+                ? (['divider', { key: 'webaccount', label: 'Sign-ins and password…', onSelect: () => location.assign('/account') }, { key: 'weblogout', label: 'Sign out of this browser', onSelect: webSignOut }] as const)
+                : []),
+              ...(props.auth.usingOAuthTokenEnv && !props.auth.apiKeyOnly ? [] : (['divider', { key: 'signout', label: api.isWeb ? 'Sign out of Claude' : 'Sign out', onSelect: props.onSignOut }] as const))
             ]}
           />
         )}

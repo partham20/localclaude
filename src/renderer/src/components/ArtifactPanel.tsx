@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { Artifact, ArtifactType } from '../../../shared/types'
 import { ARTIFACT_LABEL, artifactLang, fenced } from '../../../shared/format'
-import { api } from '../api'
+import { api, appUrl } from '../api'
 import { Icon } from './Icon'
 import { Markdown } from './Markdown'
 import { Menu } from './Menu'
@@ -116,7 +116,7 @@ export function ArtifactPanel(props: {
   const vi = props.state.version ?? a.versions.length - 1
   const v = a.versions[Math.min(vi, a.versions.length - 1)]
   const framed = FRAMED.includes(a.type)
-  const src = `artifact://view/${encodeURIComponent(props.sessionId)}/${encodeURIComponent(a.id)}/${vi}?t=${v.ts}`
+  const src = appUrl(`artifact://view/${encodeURIComponent(props.sessionId)}/${encodeURIComponent(a.id)}/${vi}?t=${v.ts}`)
   const pageError = error?.src === src ? error.text : null
 
   return (

@@ -1,6 +1,6 @@
 // Locating the Claude Code binary, building a subscription-only environment,
 // and sign-in / sign-out through Claude Code's own `auth` commands.
-import { BrowserWindow, shell } from 'electron'
+import { shell } from 'electron'
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -235,12 +235,9 @@ let loginProc: ChildProcessWithoutNullStreams | null = null
 const URL_RE = /https:\/\/[^\s"'<>]+/g
 
 /** Start `claude auth login --claudeai` and stream its output to the window. */
-export function startLogin(win: BrowserWindow): void {
+export function startLogin(send: (e: LoginEvent) => void): void {
   cancelLogin()
   const bin = resolveClaudeBinary()
-  const send = (e: LoginEvent): void => {
-    if (!win.isDestroyed()) win.webContents.send('login:event', e)
-  }
   if (process.env.LOCALCLAUDE_FAKE_AGENT) {
     // tests: pretend the browser sign-in went through
     const url = 'https://claude.ai/oauth/authorize?e2e=1'

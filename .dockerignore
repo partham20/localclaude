@@ -1,0 +1,11 @@
+node_modules
+out
+release
+test/out
+e2e-shots
+*.log
+.git
+docker-compose.override.yml
+.env
+data
+workspace

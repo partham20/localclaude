@@ -3,12 +3,12 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ImageRef } from '../../../shared/types'
-import { api } from '../api'
+import { api, appUrl } from '../api'
 import { Icon } from './Icon'
 
 /** lcimg:// address of a chat image; `width` asks for a smaller copy. */
 export function imageUrl(sessionId: string, img: ImageRef, width?: number): string {
-  return `lcimg://chat/${encodeURIComponent(sessionId)}/${encodeURIComponent(img.id)}${width ? `?w=${width}` : ''}`
+  return appUrl(`lcimg://chat/${encodeURIComponent(sessionId)}/${encodeURIComponent(img.id)}${width ? `?w=${width}` : ''}`)
 }
 
 /** Which chat the images belong to and how to open the viewer (provided by the chat view). */

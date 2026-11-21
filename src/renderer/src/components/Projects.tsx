@@ -279,9 +279,7 @@ export function ProjectView(props: {
   const dropPaths = async (e: DragEvent, card: 'folders' | 'knowledge'): Promise<void> => {
     e.preventDefault()
     setDropCard(null)
-    const paths = Array.from(e.dataTransfer.files)
-      .map((f) => api.pathForFile(f))
-      .filter(Boolean)
+    const paths = await api.filePaths(Array.from(e.dataTransfer.files))
     if (!paths.length) return
     const skipped: string[] = []
     if (card === 'folders') {

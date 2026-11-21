@@ -95,7 +95,7 @@ export class SecureStore {
     this.lock = { ok: true, encryptionBackend: backend, machineIdShort: this.machineHash.slice(0, 12) }
 
     if (!existsSync(this.vaultFile)) {
-      this.vault = { version: 1, machineHash: this.machineHash, settings: { ...DEFAULT_SETTINGS, defaultCwd: app.getPath('home') }, sessions: [] }
+      this.vault = { version: 1, machineHash: this.machineHash, settings: { ...DEFAULT_SETTINGS, defaultCwd: process.env.LOCALCLAUDE_WORKSPACE || app.getPath('home') }, sessions: [] }
       this.saveVault()
       return this.lock
     }
@@ -129,7 +129,8 @@ export class SecureStore {
     const c = createCipheriv('aes-256-gcm', this.key, iv)
     const body = Buffer.concat([typeof plain === 'string' ? c.update(plain, 'utf8') : c.update(plain), c.final()])
     let out = Buffer.concat([MAGIC, iv, c.getAuthTag(), body])
-    if (safeStorage.isEncryptionAvailable()) {
+    // server mode: no OS keyring in a container; the key comes from the server secret instead
+    if (!process.env.LOCALCLAUDE_SERVER && safeStorage.isEncryptionAvailable()) {
       out = Buffer.concat([Buffer.from('S'), safeStorage.encryptString(out.toString('base64'))])
     } else {
       out = Buffer.concat([Buffer.from('P'), out])

@@ -4,3 +4,8 @@ release/
 test/out/
 *.log
 e2e-shots/
+
+# self-hosting
+.env
+data/
+workspace/

@@ -13,7 +13,9 @@
     "dist:portable:linux": "electron-vite build && electron-builder --linux tar.gz AppImage",
     "dist:portable:win": "electron-vite build && electron-builder --win zip",
     "test": "esbuild test/agent.test.ts --bundle --platform=node --format=esm --outfile=test/out/agent.test.mjs --alias:electron=./test/electron-stub.js --external:@anthropic-ai/claude-agent-sdk --external:unpdf --external:cross-spawn --external:react --external:react-dom --log-level=warning && node test/out/agent.test.mjs",
-    "test:e2e": "electron-vite build && node test/e2e/launch.mjs"
+    "test:e2e": "electron-vite build && node test/e2e/launch.mjs",
+    "test:web": "electron-vite build && node test/e2e/web.mjs",
+    "server": "electron-vite build && electron . --server"
   },
   "author": "Parthasarathy M",
   "license": "UNLICENSED",
