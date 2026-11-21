@@ -186,7 +186,8 @@ export class WebServer {
       server.listen(this.o.port, this.o.host, () => {
         log('info', `web: listening on http://${this.o.host}:${this.o.port}`)
         if (!this.auth.hasAccount) {
-          const banner = `\n  LocalClaude has no account yet. Open it in a browser and use this setup code:\n\n      ${this.setupCode}\n`
+          // one line, so `grep "setup code"` finds the code itself
+          const banner = `LocalClaude has no account yet. Open it in a browser and use this setup code: ${this.setupCode}`
           console.log(banner)
           log('info', 'web: waiting for first-time setup (setup code printed to the console)')
         }
