@@ -4,6 +4,7 @@ import { isArtifactTool, parsedInput, type ToolPart } from '../../../shared/step
 import type { AppSettings, Artifact, Attachment, ChatMessage, GitStatus, ImageRef, PermissionModeUI, PermissionRequest, Project, RateLimitInfo, RemoteState, SessionMeta } from '../../../shared/types'
 import type { SessionRuntime } from '../App'
 import { api } from '../api'
+import { PHONE, useMedia } from '../useMedia'
 import { allStyles } from '../../../shared/styles'
 import { designKind } from '../../../shared/design'
 import { claudeModelMenu } from '../../../shared/models'
@@ -440,6 +441,7 @@ export function ChatView(props: {
     'divider',
     { key: 'delete', label: 'Delete design', danger: true, onSelect: () => confirm(`Delete "${meta.title}"? This removes the design and its chat from LocalClaude.`) && props.onDelete() }
   ]
+  const phone = useMedia(PHONE)
   const titleMenu: MenuEntry[] = [
     { key: 'rename', label: 'Rename', onSelect: () => setRenaming(meta.title) },
     {
@@ -453,6 +455,17 @@ export function ChatView(props: {
     { key: 'export', label: 'Export…', hint: 'Markdown · Ctrl+Shift+E', onSelect: props.onExport },
     ...(props.settings.obsidianEnabled && props.settings.obsidianVault
       ? [{ key: 'obsidian', label: 'Open in Obsidian', hint: 'Saves it as a note', disabled: !top.length, onSelect: () => void api.openChatInObsidian(meta.id) }]
+      : []),
+    // phones have no room for these top-bar buttons, so they live in this menu instead
+    ...(phone && !design
+      ? [
+          { key: 'remote', label: 'Remote Control…', hint: props.remote.status === 'connected' ? 'On' : undefined, onSelect: () => setRemoteOpen(true) },
+          {
+            key: 'chrome',
+            label: props.settings.chromeIntegration ? 'Turn off Chrome browser' : 'Let Claude use Chrome',
+            onSelect: () => void props.onSettings({ chromeIntegration: !props.settings.chromeIntegration })
+          }
+        ]
       : []),
     'divider',
     { section: 'Working folder' },
@@ -597,7 +610,7 @@ export function ChatView(props: {
         <div className="grow" />
         {!design && <div className="title-actions no-drag">
           <button
-            className={'icon-btn remote-btn' + (remoteOn ? ' on' : '')}
+            className={'icon-btn remote-btn phone-hide' + (remoteOn ? ' on' : '')}
             onClick={() => setRemoteOpen(true)}
             title={
               props.remote.status === 'connected'
@@ -609,7 +622,7 @@ export function ChatView(props: {
             {props.remote.status === 'connected' && <span className="remote-dot" />}
           </button>
           <button
-            className={'icon-btn' + (props.settings.chromeIntegration ? ' on' : '')}
+            className={'icon-btn phone-hide' + (props.settings.chromeIntegration ? ' on' : '')}
             onClick={() => void props.onSettings({ chromeIntegration: !props.settings.chromeIntegration })}
             title={props.settings.chromeIntegration ? 'Chrome browser is on (click to turn off)' : 'Let Claude use your Chrome browser'}
           >

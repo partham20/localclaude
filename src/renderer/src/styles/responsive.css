@@ -1,0 +1,471 @@
+/* Every screen size: phones, tablets and touch screens get layouts made for them.
+   Desktop windows with a mouse are untouched; everything here sits behind a media query,
+   the browser version's flag (:root[data-web]) or a touch-only query.
+   Breakpoints: phone ≤ 700px wide, or ≤ 500px tall on a touch screen (also PHONE in useMedia.ts), sidebar slides over ≤ 900px (NARROW in App.tsx). */
+
+/* ---------- the browser version ---------- */
+:root[data-web] .wco-space {
+  /* no window buttons to make room for */
+  display: none;
+}
+:root[data-web] .titlebar {
+  padding-right: 12px;
+}
+:root[data-web] .app {
+  /* the visible part of the screen, between a phone browser's address bar and toolbar */
+  height: 100dvh;
+}
+:root[data-web] body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+.menu-scrim {
+  display: none;
+}
+
+/* ---------- touch screens (phones, tablets, touch laptops) ---------- */
+@media (hover: none) and (pointer: coarse) {
+  /* controls that only appeared on hover are always shown (there's no hover on touch) */
+  .session-item .more,
+  .msg-actions,
+  .codeblock-tools,
+  .memory-actions,
+  .board-label .icon-btn,
+  .step-head .chev-i {
+    opacity: 1;
+  }
+  .msg-actions {
+    opacity: 0.7;
+  }
+  /* finger-sized targets */
+  .icon-btn {
+    min-width: 36px;
+    min-height: 36px;
+  }
+  .session-item {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  .nav-item,
+  .menu-item {
+    min-height: 40px;
+  }
+  .more .menu-trigger {
+    padding: 4px 8px;
+  }
+  /* text fields at 16px so iOS Safari doesn't zoom in when one is focused */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  textarea,
+  select,
+  .composer-input {
+    font-size: max(16px, 1em);
+  }
+  .composer-input {
+    font-size: 16px;
+  }
+  button,
+  a,
+  .session-item {
+    touch-action: manipulation;
+  }
+}
+
+/* a dialog never scrolls as a whole (focusing a field on a touch screen could shift it); its panes scroll */
+.modal {
+  overflow: clip;
+}
+.modal-nav {
+  overflow-y: auto;
+}
+
+/* ---------- tablets (touch, up to iPad Pro landscape): Settings uses more of the screen ---------- */
+@media (hover: none) and (pointer: coarse) and (min-width: 701px) and (min-height: 501px) {
+  .modal.settings-modal {
+    width: min(960px, calc(100vw - 48px));
+    height: min(860px, calc(100dvh - 64px));
+  }
+}
+
+/* ---------- tablets and narrow windows: the sidebar slides over the page ---------- */
+@media (max-width: 900px) {
+  .side-titlebar {
+    height: 52px;
+  }
+  .sidebar.overlay {
+    width: min(320px, 86vw);
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+  }
+  :root[data-motion='on'] .sidebar-backdrop {
+    animation: fade 160ms ease both;
+  }
+  .modal-nav {
+    width: 180px;
+  }
+}
+
+/* ---------- phones (also phones on their side, which are wide but short) ---------- */
+@media (max-width: 700px), (max-height: 500px) and (pointer: coarse) {
+  /* top bar: menu, the chat's name (taking the room that's left), a few actions; no back/forward */
+  .titlebar {
+    height: calc(52px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) max(6px, env(safe-area-inset-right)) 0 max(6px, env(safe-area-inset-left));
+    gap: 2px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  }
+  .titlebar.floating {
+    border-bottom: 0;
+    padding-left: max(6px, env(safe-area-inset-left));
+  }
+  .header-actions .nav-step,
+  .side-titlebar .nav-step,
+  .phone-hide,
+  .titlebar .env,
+  .git-menu,
+  .wco-space {
+    display: none !important;
+  }
+  .header-actions {
+    gap: 0;
+  }
+  .header-actions .icon-btn,
+  .title-actions .icon-btn {
+    padding: 9px;
+  }
+  .title-menu {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .title-menu > .menu-trigger {
+    max-width: 100%;
+    margin-left: 0;
+    padding: 6px 8px;
+  }
+  .chat-title {
+    max-width: none;
+    font-weight: 600;
+    font-size: 16px;
+  }
+  .titlebar > .grow {
+    display: none;
+  }
+  .title-actions {
+    margin-left: auto;
+    gap: 0;
+  }
+
+  /* chat */
+  .messages,
+  .composer-wrap {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+  .messages-inner {
+    padding-top: 12px;
+  }
+  .user-col {
+    max-width: 88%;
+  }
+  .md pre,
+  .md table {
+    max-width: 100%;
+  }
+  .md table {
+    display: block;
+    overflow-x: auto;
+    font-size: 14px;
+  }
+  .composer-wrap {
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+  .composer {
+    border-radius: 22px;
+    padding: 6px 6px 6px 16px;
+  }
+  .send {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+  }
+  .composer-below {
+    padding: 4px 0 0;
+    gap: 2px;
+    font-size: 13.5px;
+  }
+  .below-menu > .menu-trigger {
+    padding: 6px 8px;
+    font-size: 13.5px;
+  }
+  .empty-main {
+    padding: 24px max(20px, env(safe-area-inset-right)) 24px max(20px, env(safe-area-inset-left));
+  }
+  .empty-main h1 {
+    font-size: 26px;
+  }
+
+  /* menus open as a sheet from the bottom of the screen */
+  .menu-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 69;
+    background: color-mix(in srgb, #000 32%, transparent);
+  }
+  :root[data-motion='on'] .menu-scrim {
+    animation: fade 160ms ease both;
+  }
+  .menu-pop,
+  .menu-pop.left,
+  .menu-pop.right,
+  .menu-pop.up,
+  .menu-pop.down {
+    position: fixed;
+    top: auto;
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    min-width: 0;
+    max-width: 560px;
+    margin-inline: auto;
+    max-height: 72dvh;
+    border-radius: 18px;
+    padding: 8px;
+    transform: none;
+    margin-block: 0;
+  }
+  :root[data-motion='on'] .menu-pop {
+    animation: sheet-up 220ms var(--ease) both;
+  }
+  .menu-item {
+    padding: 11px 12px;
+    font-size: 15.5px;
+  }
+  .menu-hint {
+    font-size: 12.5px;
+  }
+
+  /* dialogs fill the width; tall ones scroll */
+  .dialog-card {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 40px);
+  }
+  .palette {
+    width: calc(100vw - 16px);
+    max-height: 70dvh;
+  }
+
+  /* artifacts and side panels take the whole screen */
+  .artifact-panel,
+  .files-panel {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    z-index: 45 !important;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    border-left: 0;
+  }
+  .artifact-head {
+    height: 52px;
+    gap: 2px;
+    padding: 0 6px;
+  }
+  .artifact-head .artifact-title {
+    flex: 1 1 64px;
+    min-width: 48px;
+  }
+  .artifact-head .seg-toggle button {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  /* toasts sit above the reply box and the home indicator */
+  .toast {
+    bottom: calc(88px + env(safe-area-inset-bottom));
+    max-width: calc(100vw - 32px);
+  }
+
+  /* ---- Settings: full screen; the list of sections, then one section (back returns to the list) ---- */
+  .modal-backdrop:has(.settings-modal) {
+    place-items: stretch;
+  }
+  .modal.settings-modal {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    position: relative;
+  }
+  :root[data-motion='on'] .modal.settings-modal {
+    animation: sheet-up 240ms var(--ease) both;
+  }
+  .settings-modal .modal-nav,
+  .settings-modal .modal-body {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+  }
+  .settings-modal.show-list .modal-body,
+  .settings-modal.show-detail .modal-nav {
+    display: none;
+  }
+  .settings-modal .modal-nav {
+    background: var(--bg);
+    border-right: 0;
+    overflow-y: auto;
+    padding: env(safe-area-inset-top) max(12px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+    gap: 0;
+  }
+  .modal-nav-head {
+    display: flex;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--bg);
+    padding: 8px 0 6px;
+  }
+  .settings-modal .modal-heading {
+    flex: 1;
+    font-size: 28px;
+    letter-spacing: -0.02em;
+    padding: 6px 8px;
+  }
+  .settings-modal .nav-item {
+    min-height: 50px;
+    font-size: 16px;
+    gap: 14px;
+    padding: 0 10px;
+    border-radius: 12px;
+  }
+  .settings-modal .nav-item + .nav-item {
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--border) 70%, transparent);
+  }
+  .settings-modal .nav-item:active {
+    background: var(--hover);
+  }
+  .nav-label {
+    flex: 1;
+  }
+  .nav-chev {
+    color: var(--muted);
+    opacity: 0.7;
+  }
+  .settings-modal .modal-body {
+    padding: 0 max(18px, env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+    gap: 16px;
+  }
+  .settings-modal .modal-body > .close {
+    display: none;
+  }
+  .sheet-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    min-height: calc(52px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    margin: 0 -18px;
+    padding-left: 6px;
+    padding-right: 6px;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  }
+  .sheet-back {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-size: 16px;
+    padding: 8px 6px;
+    border-radius: 10px;
+  }
+  .sheet-title {
+    font-weight: 600;
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 52vw;
+  }
+  .sheet-bar .sheet-close {
+    justify-self: end;
+  }
+  .sheet-close {
+    padding: 9px;
+    color: var(--muted);
+  }
+  /* the section's own heading is the bar's title */
+  .settings-modal .modal-body > h2 {
+    display: none;
+  }
+  /* label above value instead of a narrow two-column table */
+  .kv {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .kv > span:nth-child(even) {
+    margin-bottom: 10px;
+    word-break: normal;
+    overflow-wrap: anywhere;
+  }
+  .font-grid {
+    grid-template-columns: 1fr;
+  }
+  .settings-modal .row {
+    row-gap: 8px;
+  }
+  .settings-modal .input,
+  .settings-modal select {
+    max-width: 100%;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    opacity: 0.6;
+    transform: translateY(24px);
+  }
+}
+
+/* ---------- the smallest phones ---------- */
+@media (max-width: 380px) {
+  .header-actions .icon-btn,
+  .title-actions .icon-btn {
+    padding: 7px;
+  }
+  .chat-title {
+    font-size: 15px;
+  }
+}
+
+/* ---------- phones on their side: short screens ---------- */
+@media (max-height: 500px) and (pointer: coarse) {
+  .titlebar:not(.floating) {
+    height: calc(44px + env(safe-area-inset-top));
+  }
+  .messages-inner {
+    padding-top: 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-pop,
+  .menu-scrim,
+  .modal.settings-modal {
+    animation: none !important;
+  }
+}

@@ -7,7 +7,12 @@ function page(title: string, body: string): string {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151515" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
 <meta name="robots" content="noindex, nofollow">
 <title>${esc(title)} · LocalClaude</title>
 <style>
@@ -19,7 +24,7 @@ main{width:100%;max-width:400px;background:var(--card);border:1px solid var(--bo
 h1{font-size:20px;margin:0 0 4px}
 p{margin:0 0 16px;color:var(--muted)}
 label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
-input[type=password],input[type=text]{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:inherit;font:inherit}
+input[type=password],input[type=text]{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:transparent;color:inherit;font:inherit;font-size:16px}
 input:focus{outline:2px solid var(--accent);outline-offset:1px}
 .code{letter-spacing:.3em;font-variant-numeric:tabular-nums;font-size:18px}
 .check{display:flex;gap:8px;align-items:flex-start;font-weight:400;font-size:14px;margin-top:16px}
@@ -34,6 +39,7 @@ button.secondary{background:transparent;color:var(--text);border:1px solid var(-
 table{width:100%;font-size:13px;border-collapse:collapse;margin-top:8px}
 td{padding:6px 4px;border-top:1px solid var(--border);vertical-align:top}
 a{color:var(--accent)}
+@media (max-width:520px){body{align-items:flex-start;padding:max(24px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}main{background:transparent;border:0;padding:12px 0}h1{font-size:26px}input[type=password],input[type=text]{padding:13px 14px;border-radius:12px}button{padding:14px;border-radius:12px;font-size:16px}td{display:block;border-top:0;padding:2px 0}tr{display:block;border-top:1px solid var(--border);padding:8px 0}}
 </style>
 </head>
 <body><main><div class="mark">LocalClaude</div>${body}</main></body>

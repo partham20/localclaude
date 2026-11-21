@@ -735,10 +735,10 @@ export default function App() {
       <button className="icon-btn" onClick={sidebar.toggle} title="Show sidebar (Ctrl+B)">
         <Icon name="sidebar" size={18} />
       </button>
-      <button className="icon-btn" disabled={!canBack} onClick={() => stepNav(-1)} title="Back (Alt+←)">
+      <button className="icon-btn nav-step" disabled={!canBack} onClick={() => stepNav(-1)} title="Back (Alt+←)">
         <Icon name="back" size={18} />
       </button>
-      <button className="icon-btn" disabled={!canForward} onClick={() => stepNav(1)} title="Forward (Alt+→)">
+      <button className="icon-btn nav-step" disabled={!canForward} onClick={() => stepNav(1)} title="Forward (Alt+→)">
         <Icon name="forward" size={18} />
       </button>
       <button className="icon-btn" onClick={() => void newChat()} title="New chat (Ctrl+N)">
