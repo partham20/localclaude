@@ -83,10 +83,12 @@ data in `./data` can't be opened.
 ```sh
 mkdir -p data workspace
 docker compose up -d --build
-docker compose logs localclaude | grep -A2 "setup code"
+docker compose logs localclaude | grep "setup code"
 ```
 
 The first build takes a few minutes. The last command prints the one-time **setup code**.
+`docker compose ps` should show the app as `healthy`. The log has some `dbus` errors (`Failed to connect to the bus`):
+Electron prints them because the container has no desktop, and you can ignore them.
 
 ### 5. Create your account
 
