@@ -44,6 +44,7 @@ const MIME: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -56,7 +57,7 @@ const MIME: Record<string, string> = {
 
 const APP_CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
-const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data: 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 
 const COOKIE = 'lc_session'
 const SETUP_COOKIE = 'lc_setup'
@@ -235,6 +236,8 @@ export class WebServer {
 
     if (path === '/healthz') return send(res, 200, 'text/plain', 'ok')
     if (path === '/robots.txt') return send(res, 200, 'text/plain', 'User-agent: *\nDisallow: /\n')
+    // the home-screen icon and app manifest, which browsers fetch without the session cookie
+    if (path === '/manifest.webmanifest' || path === '/icon.png') return this.static(res, path)
 
     const cookies = parseCookies(req.headers.cookie)
     const token = cookies[COOKIE]

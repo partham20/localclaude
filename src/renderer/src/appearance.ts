@@ -43,6 +43,8 @@ export function useAppearance(settings: AppSettings | null, modThemes: ThemePres
       for (const [k, v] of Object.entries(vars)) root.style.setProperty(`--${k}`, v)
       setVars.current = Object.keys(vars)
       void api.setWindowTheme(dark, resolvedColors())
+      // the browser version: phone status bars and tab strips take the app's background
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(root).getPropertyValue('--bg').trim() || '#faf9f5')
       darkCb.current?.(dark)
     }
     root.dataset.density = a.density

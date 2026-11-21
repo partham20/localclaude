@@ -16,6 +16,7 @@ import { ShortcutField, StylesEditor, UsagePanel } from './SettingsExtras'
 import { DeepSeekPanel } from './DeepSeekSettings'
 import { OpenCodePanel } from './OpenCodeSettings'
 import { claudeModelMenu } from '../../../shared/models'
+import { PHONE, useMedia } from '../useMedia'
 
 const TABS: [string, string, string][] = [
   ['general', 'General', 'settings'],
@@ -85,6 +86,11 @@ export function SettingsDialog(props: {
     void api.appInfo().then(setInfo)
   }, [])
 
+  // phones: a list of sections first, then one section full screen (like a phone's own Settings app).
+  // Opening straight to a section (from a link or the palette) skips the list.
+  const phone = useMedia(PHONE)
+  const [listView, setListView] = useState(props.tab === 'general')
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') props.onClose()
@@ -93,19 +99,48 @@ export function SettingsDialog(props: {
     return () => window.removeEventListener('keydown', onKey)
   }, [props])
 
+  const tabLabel = TABS.find(([k]) => k === props.tab)?.[1] ?? 'Settings'
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div className="modal">
+      <div className={'modal settings-modal' + (phone ? (listView ? ' show-list' : ' show-detail') : '')} role="dialog" aria-label="Settings">
         <nav className="modal-nav">
-          <div className="modal-heading">Settings</div>
+          <div className="modal-nav-head">
+            <div className="modal-heading">Settings</div>
+            {phone && (
+              <button className="icon-btn sheet-close" onClick={props.onClose} aria-label="Close">
+                <Icon name="x" size={18} />
+              </button>
+            )}
+          </div>
           {TABS.map(([k, label, icon]) => (
-            <button key={k} className={'nav-item' + (props.tab === k ? ' active' : '')} onClick={() => props.onTab(k)} data-tab={k}>
-              <Icon name={icon} size={15} />
-              {label}
+            <button
+              key={k}
+              className={'nav-item' + (props.tab === k && !phone ? ' active' : '')}
+              onClick={() => {
+                props.onTab(k)
+                setListView(false)
+              }}
+              data-tab={k}
+            >
+              <Icon name={icon} size={phone ? 18 : 15} />
+              <span className="nav-label">{label}</span>
+              {phone && <Icon name="chevron" size={16} className="nav-chev" />}
             </button>
           ))}
         </nav>
         <section className="modal-body">
+          {phone && (
+            <div className="sheet-bar">
+              <button className="sheet-back" onClick={() => setListView(true)} aria-label="Back to Settings">
+                <Icon name="chevronLeft" size={20} />
+                Settings
+              </button>
+              <span className="sheet-title">{tabLabel}</span>
+              <button className="icon-btn sheet-close" onClick={props.onClose} aria-label="Close">
+                <Icon name="x" size={18} />
+              </button>
+            </div>
+          )}
           <button className="icon-btn close" onClick={props.onClose} aria-label="Close">
             ✕
           </button>

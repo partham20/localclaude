@@ -261,6 +261,8 @@ async function handleWebEvent(ch: string, payload: unknown): Promise<void> {
 
 /** The API for the browser version. */
 export function createWebApi(): Api {
+  // lets the styles drop desktop-only room (window buttons) and use touch-friendly sizes
+  document.documentElement.dataset.web = 'on'
   connect()
   return makeApi({
     inv,

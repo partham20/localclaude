@@ -136,6 +136,18 @@ To make Cloudflare ask for a one-time email code before anyone even reaches the 
 Files you add from the browser (attachments, imports) are uploaded to `./data/web/uploads`.
 Files the app "saves" are downloaded to your browser.
 
+## On a phone or tablet
+
+The browser version adapts to the screen it's on. On a phone the sidebar slides in from the left,
+menus open as sheets from the bottom, Settings goes full screen (a list of sections, then one section
+with a back button), artifacts open full screen, and everything respects the notch and home bar.
+Tablets keep the desktop layout with a slide-over sidebar in portrait, and touch screens always
+show the buttons that a mouse would reveal on hover.
+
+To use it like an app, add it to your home screen: **Share → Add to Home Screen** in Safari on
+iPhone/iPad, or **⋮ → Add to Home screen / Install app** in Chrome on Android. It then opens full
+screen without the browser's address bar.
+
 ## What's different from the desktop app
 
 - **File dialogs** become a folder browser for the server's folders (start in `/workspace`). File

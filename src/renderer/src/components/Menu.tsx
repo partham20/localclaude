@@ -63,6 +63,8 @@ export function Menu(props: {
       >
         {props.trigger}
       </button>
+      {/* phones: the menu is a sheet from the bottom, over a dimmed screen */}
+      {open && <div className="menu-scrim" onClick={() => setOpen(false)} />}
       {open && (
         <div className={`menu-pop ${props.align ?? 'left'} ${props.direction ?? 'down'}`} role="menu">
           {searchable && (

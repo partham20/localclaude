@@ -498,10 +498,10 @@ export function Sidebar(props: {
         <button className="icon-btn no-drag" onClick={props.onCollapse} title="Hide sidebar (Ctrl+B)">
           <Icon name="sidebar" size={18} />
         </button>
-        <button className="icon-btn no-drag" disabled={!props.canBack} onClick={props.onBack} title="Back">
+        <button className="icon-btn no-drag nav-step" disabled={!props.canBack} onClick={props.onBack} title="Back">
           <Icon name="back" size={18} />
         </button>
-        <button className="icon-btn no-drag" disabled={!props.canForward} onClick={props.onForward} title="Forward">
+        <button className="icon-btn no-drag nav-step" disabled={!props.canForward} onClick={props.onForward} title="Forward">
           <Icon name="forward" size={18} />
         </button>
       </div>

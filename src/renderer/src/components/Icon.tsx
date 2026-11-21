@@ -30,6 +30,7 @@ const PATHS: Record<string, string> = {
   retry: 'M21 12a9 9 0 1 1-3-6.7L21 8 M21 3v5h-5',
   chevron: 'M9 6l6 6-6 6',
   chevronDown: 'M6 9l6 6 6-6',
+  chevronLeft: 'M15 6l-6 6 6 6',
   project: 'M3 7h18v4H3z M5 11v8h14v-8 M10 15h4',
   sliders: 'M4 7h9 M17 7h3 M4 12h3 M11 12h9 M4 17h11 M19 17h1 M15 5v4 M9 10v4 M17 15v4',
   memory: 'M6 3h12v18l-6-4-6 4z',

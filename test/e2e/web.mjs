@@ -221,6 +221,24 @@ try {
     if (!d.suggestedFilename()) throw new Error('no file name')
   })
 
+  await step('on a phone-sized screen, Settings is a full-screen list, then one section with a back button', async () => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(BASE + '/')
+    await page.waitForSelector('.app')
+    if (await page.$('.sidebar.overlay:not(.collapsed)')) throw new Error('the sidebar should start closed on a phone')
+    await page.keyboard.press('Control+,')
+    await page.waitForSelector('.settings-modal.show-list')
+    const box = await (await page.$('.settings-modal')).boundingBox()
+    if (box.width < 389 || box.height < 843) throw new Error('Settings is not full screen: ' + JSON.stringify(box))
+    await page.click('.modal-nav .nav-item[data-tab="account"]')
+    await page.waitForSelector('.settings-modal.show-detail .sheet-title:has-text("Account")')
+    await page.click('.sheet-back')
+    await page.waitForSelector('.settings-modal.show-list')
+    await page.click('.sheet-close >> nth=0')
+    await page.waitForSelector('.settings-modal', { state: 'detached' })
+    await page.setViewportSize({ width: 1280, height: 720 })
+  })
+
   await step('the account page lists this session; sign out works', async () => {
     await page.goto(BASE + '/account')
     await page.waitForSelector('td:has-text("(this one)")')
